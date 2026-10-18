@@ -921,6 +921,18 @@ function exportDailyReportFile(){
   downloadCsvFile('Bao_cao_dien_bien_'+date+'.csv',rows);
 }
 
+
+function showReportInApp(reportHtml, title='Xem báo cáo'){
+  let modal=document.getElementById('mobileReportModal');
+  if(!modal){modal=document.createElement('div');modal.id='mobileReportModal';modal.style.cssText='position:fixed;inset:0;z-index:200000;background:rgba(15,23,42,.72);display:flex;align-items:stretch;justify-content:center;padding:env(safe-area-inset-top,8px) 8px env(safe-area-inset-bottom,8px);box-sizing:border-box';document.body.appendChild(modal);}
+  const clean=String(reportHtml).replace(/<script[\s\S]*?<\/script>/gi,'');
+  modal.innerHTML=`<div style="background:#fff;border-radius:12px;width:100%;max-width:1100px;display:flex;flex-direction:column;overflow:hidden;min-height:0"><div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px;background:#1f2937;color:#fff;font-weight:bold"><span style="min-width:0;overflow-wrap:anywhere">${String(title).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</span><div style="display:flex;gap:6px;flex-shrink:0"><button type="button" id="mobileReportPrint" style="padding:9px 11px;border:0;border-radius:7px;background:#16a34a;color:white;font-weight:bold">In / PDF</button><button type="button" id="mobileReportClose" style="padding:9px 11px;border:0;border-radius:7px;background:#e5e7eb;color:#111;font-weight:bold">Đóng</button></div></div><iframe title="${title}" style="border:0;width:100%;flex:1;min-height:0;background:white"></iframe></div>`;
+  const frame=modal.querySelector('iframe');frame.srcdoc=clean;modal.style.display='flex';document.body.style.overflow='hidden';
+  const close=()=>{modal.style.display='none';document.body.style.overflow='';};
+  modal.querySelector('#mobileReportClose').onclick=close;
+  modal.querySelector('#mobileReportPrint').onclick=()=>{try{frame.contentWindow.focus();frame.contentWindow.print();}catch(e){alert('Điện thoại không hỗ trợ in trực tiếp trong cửa sổ này. Bạn có thể chụp màn hình hoặc mở phần mềm bằng Safari để thử In / Lưu PDF.');}};
+}
+
 function writeReportWindow(win, html){
   if(!win) return;
   const toolbar = `<div id="reportToolbar" style="position:sticky;top:0;z-index:99999;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:#1f2937;color:#fff;padding:10px 14px;margin:-1px -1px 14px;font:14px Arial,sans-serif"><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" onclick="window.print()" style="display:inline-block!important;background:#16a34a;color:#fff;border:0;border-radius:6px;padding:9px 14px;cursor:pointer;font-weight:bold">🖨 In file</button><button type="button" onclick="window.close()" style="display:inline-block!important;background:#dc2626;color:#fff;border:0;border-radius:6px;padding:9px 14px;cursor:pointer;font-weight:bold">✕ Đóng file</button></div></div>`;
@@ -936,10 +948,8 @@ function printDailyReport(){
   const content=$('dailyReportContent')?.innerHTML||'';
   const preparedBy=($('reportPreparedBy')?.value||'').trim();
   const printableContent=content.replace(/<input id=\"reportPreparedBy\"[^>]*>/,preparedBy?`<div style=\"min-width:220px;text-align:right;border-bottom:1px solid #333;padding:6px 0 3px\">${esc(preparedBy)}</div>`:'<div style=\"min-width:220px;border-bottom:1px solid #333;height:28px\"></div>');
-  const win=window.open('','_blank');
-  if(!win){alert('Trình duyệt đang chặn cửa sổ báo cáo. Cho phép cửa sổ bật lên rồi thử lại.');return;}
   const reportHtml = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Báo cáo diễn biến ${date}</title><style>body{font-family:Arial,sans-serif;color:#243447;margin:22px}h2,h3{text-align:center} .daily-report-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.daily-report-stat{border:1px solid #cbd5e1;padding:9px;text-align:center}.daily-report-stat b{display:block;font-size:20px}.daily-event{border:1px solid #cbd5e1;border-left:4px solid #347f99;padding:10px;margin:8px 0;break-inside:avoid}.meta{font-size:11px;color:#475569;margin-top:5px}button{display:none}.section{font-weight:bold;border-bottom:1px solid #ddd;margin-top:18px}.census-report-wrap{overflow:visible}.census-report{width:100%;min-width:0;border-collapse:collapse;font-family:"Times New Roman",serif}.census-report th,.census-report td{border:1px solid #222;padding:7px 5px;text-align:center;color:#111;font-size:12pt;font-family:"Times New Roman",serif}.census-report th{background:#fff;color:#111;position:static}.census-report td:nth-child(2){text-align:left;font-weight:bold}.census-report td:nth-child(3){font-weight:bold}@page{size:A4 landscape;margin:0}@media print{body{margin:10mm}}</style></head><body><h2>TRUNG TÂM BẢO TRỢ XÃ HỘI TÂN HIỆP</h2><h3>BÁO CÁO DIỄN BIẾN HẰNG NGÀY — ${date.split('-').reverse().join('/')}</h3>${printableContent}<script>window.onload=()=>setTimeout(()=>window.print(),250);<\\/script></body></html>`;
-  writeReportWindow(win,reportHtml);
+  showReportInApp(reportHtml,'Báo cáo diễn biến hằng ngày');
 }
 
 async function savePerson(e){
@@ -1466,7 +1476,7 @@ function exportSchedule(scope,id,format,action="preview"){
   downloadFormattedExcel('Lich_kham_'+label.replace(/[^a-zA-Z0-9À-ỹ]+/g,'_')+'.xls',excelRows);return;
  }
  const report=`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Lịch khám ${escH(label)}</title><style>body{font-family:Arial,sans-serif;margin:18mm;color:#222}h2{text-align:center}p{text-align:center}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #555;padding:7px;text-align:left}th{background:#e8eef7}@media print{body{margin:12mm}}</style></head><body><h2>LỊCH TÁI KHÁM – ${escH(label)}</h2><p>Ngày xuất: ${new Date().toLocaleDateString('vi-VN')} — Ngày lọc: ${selectedDate?escH(formatDateVN(selectedDate)):'Tất cả ngày'}</p><table><thead><tr><th>STT</th><th>Ngày khám</th><th>Họ và tên</th><th>Mã ĐT</th><th>Nhà</th><th>Vị trí</th><th>Thuốc</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escH(formatDateVN(r.ngay))}</td><td>${escH(r.ten)}</td><td>${escH(r.ma)}</td><td>${escH(r.nha)}</td><td>${escH(r.vitri)}</td><td>${escH(r.thuoc)}</td><td>${escH(r.tinhTrang)}</td><td>${escH(r.ghiChu)}</td></tr>`).join('')}</tbody></table><p style="margin-top:35px;text-align:right">Người lập: ................................</p></body></html>`;
- const win=window.open('','_blank');if(!win){alert('Trình duyệt đang chặn cửa sổ báo cáo. Hãy cho phép cửa sổ bật lên rồi thử lại.');return;}closeModal('schedulePreviewModal');writeReportWindow(win,report);
+ closeModal('schedulePreviewModal');showReportInApp(report,'Báo cáo lịch tái khám');
 }
 function exportCensusHouseCsv(n){
  const house='Nhà '+n;const period=$('censusReportPeriod')?.value||'month';const now=new Date();const start=new Date(now);
@@ -1498,7 +1508,7 @@ function exportCensusHouseReport(n){
  const stats=[['Tổng quân số đang quản lý',rows.length],['Đối tượng trên 60 tuổi',over60],['Đối tượng dưới 60 tuổi',under60],['Đối tượng khuyết tật',disabled],['Đối tượng có ghi nhận sử dụng thuốc',medicinePeople],['Lượt khám đột xuất trong kỳ',emergencyVisits],['Đối tượng có lịch tái khám trong kỳ',examVisits]];
  const escPdf=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
  const report=`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Báo cáo thống kê ${house}</title><style>body{font-family:Arial,sans-serif;color:#172b4d;margin:28px}h1{text-align:center;font-size:20px;margin-bottom:6px}h2{text-align:center;font-size:16px;margin-top:0}p{text-align:center;font-size:12px;color:#475569}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{border:1px solid #64748b;padding:12px;text-align:left}th{background:#e8eef7}td:last-child{text-align:center;font-weight:bold;width:25%}.foot{margin-top:28px;text-align:right;font-size:12px}@media print{body{margin:15mm}}</style></head><body><h1>BÁO CÁO THỐNG KÊ QUÂN SỐ VÀ Y TẾ</h1><h2>${escPdf(house)}</h2><p>Kỳ báo cáo: ${escPdf(periodName)} · Ngày lập: ${now.toLocaleDateString('vi-VN')}</p><table><thead><tr><th>Chỉ tiêu thống kê</th><th>Số lượng</th></tr></thead><tbody>${stats.map(r=>`<tr><td>${escPdf(r[0])}</td><td>${r[1]}</td></tr>`).join('')}</tbody></table><div class="foot">Người lập báo cáo: ................................</div><script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
- const win=window.open('','_blank');if(!win){alert('Trình duyệt đang chặn cửa sổ báo cáo. Vui lòng cho phép cửa sổ bật lên rồi thử lại.');return;}writeReportWindow(win,report);
+ showReportInApp(report,'Báo cáo thống kê '+house);
 }
 function openCensusHouse(n){censusHouseFilter='all';renderCensusHouse(n);}
 function hideDashboardList(){$('dashboardList').style.display='none';const mainList=$('mainPeopleTableWrap');if(mainList)mainList.style.display='';}
@@ -1954,10 +1964,7 @@ function previewMoneyTemplate(){
 }
 function printMoneyTemplate(){
  const doc=moneyPreviewDocument();if(!doc)return;
- const win=window.open('','_blank');
- if(!win){alert('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.');return;}
- win.document.open();win.document.write(doc);win.document.close();
- win.onload=()=>{win.focus();win.print();};
+ showReportInApp(doc,'In / lưu PDF mẫu rút-gửi tiền');
 }
 async function exportMoneyTemplate() {
   const rows=selectedMoneyExportRows();
