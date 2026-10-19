@@ -72,7 +72,7 @@ table{width:100%;border-collapse:collapse;min-width:1000px}th,td{padding:10px;bo
 
 .meal-card{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:linear-gradient(135deg,#f0fbf3,#dff4e5);border:1px solid #a9d9b6;border-left:5px solid #27ae60;border-radius:12px;padding:14px 16px;margin:0 0 16px;box-shadow:0 2px 7px #0000000b}
 .meal-card h2{margin:0 0 4px;color:#216e39;font-size:20px}.meal-card p{margin:0;color:#4c6653;font-size:13px}.meal-actions{display:flex;gap:8px;flex-wrap:wrap}.meal-file-link{display:inline-block;max-width:100%;overflow-wrap:anywhere;margin-top:8px;font-weight:700;color:#216e39}
-.meal-preview{max-width:100%;max-height:55vh;object-fit:contain;border:1px solid #d8e5dc;border-radius:8px;background:#f8faf9}.meal-status{margin-top:10px;padding:10px;background:#f5faf6;border-radius:8px}
+.meal-preview{display:block;width:auto;max-width:100%;max-height:78vh;object-fit:contain;border:1px solid #d8e5dc;border-radius:8px;background:#f8faf9}.meal-status{margin-top:10px;padding:10px;background:#f5faf6;border-radius:8px}
 /* Bảng báo cáo quân số theo mẫu in */
 .census-report-wrap{width:100%;overflow-x:auto;margin:12px 0 18px;background:#fff}
 .census-report{width:100%;border-collapse:collapse;min-width:680px;font-family:"Times New Roman",serif;color:#111}
@@ -167,15 +167,15 @@ table{width:100%;border-collapse:collapse;min-width:1000px}th,td{padding:10px;bo
   
 </section>
 <section id="dailyReportPanel" class="daily-report" style="display:none">
-  <div class="daily-report-head"><h2 style="margin:2px 0">📋 Báo cáo diễn biến hằng ngày</h2><button class="btn gray" onclick="closeDailyReport()">Đóng</button></div>
+  <div class="daily-report-head"><h2 style="margin:2px 0">📋 Báo cáo quân số đối tượng</h2><button class="btn gray" onclick="closeDailyReport()">Đóng</button></div>
   
   <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:12px 0">
-    <div style="min-width:180px;flex:1"><label for="dailyReportDate">Chọn ngày xem diễn biến</label><input id="dailyReportDate" type="date" onchange="dailyReportFilter='all';renderDailyReport()" aria-label="Chọn ngày để lọc diễn biến ghi nhận"></div>
+    <div style="min-width:180px;flex:1"><label for="dailyReportDate">Chọn ngày báo cáo quân số</label><input id="dailyReportDate" type="date" onchange="dailyReportFilter='all';renderDailyReport()" aria-label="Chọn ngày để lọc diễn biến ghi nhận"></div>
     <button class="btn blue" onclick="selectDailyReportDetail('all')">Xem báo cáo</button>
-    <button class="btn green" onclick="printDailyReport()">Xuất báo cáo / Lưu PDF</button>
-    <button class="btn purple" onclick="exportDailyReportFile()">Xuất file Excel (CSV)</button>
+    <button class="btn green" onclick="printDailyReport()">In báo cáo / Lưu PDF</button>
+    <button class="btn purple" onclick="exportDailyReportFile()">Xuất file Excel</button>
   </div>
-  <div id="dailyReportContent"></div><div style="font-size:12px;color:#64748b;margin-top:8px">Chọn ngày ở phía trên để xem lại các diễn biến đã ghi nhận của ngày đó.</div>
+  <div id="dailyReportContent"></div>
 </section>
 <div style="display:none" aria-hidden="true">
 <div class="stats"><div class="stat"><small>Tổng quân số</small><b id="countKhu">0</b></div><div class="stat"><b id="countYte">0</b></div><div class="stat"><b id="countBv">0</b></div><div class="stat"><b id="countDx">0</b></div><div class="stat"><b id="countMed">0</b></div><div class="stat"><b id="countDxWeek">0</b></div></div>
@@ -346,7 +346,7 @@ table{width:100%;border-collapse:collapse;min-width:1000px}th,td{padding:10px;bo
 <div id="detailModal" class="modal"><div class="box"><button class="close" onclick="closeModal('detailModal')">×</button><div id="detail"></div></div></div>
 <div id="dxModal" class="modal"><div class="box"><button class="close" onclick="closeModal('dxModal')">×</button><div id="dxContent"></div></div></div>
 
-<div id="mealModal" class="modal"><div class="box" style="max-width:700px">
+<div id="mealModal" class="modal"><div class="box" style="width:min(1200px,96vw);max-width:1200px;max-height:96vh;overflow:auto">
 <button class="close" onclick="closeModal('mealModal')">×</button><h2>🍲 Thực đơn hôm nay</h2>
 <div id="mealViewer" class="meal-status"></div>
 <div id="mealUploadArea" style="display:none;margin-top:14px">
@@ -952,8 +952,11 @@ function renderDailyReport(){
   const labels={all:'Diễn biến ghi nhận trong ngày',active:'Danh sách đầy đủ đối tượng đang quản lý',present:'Danh sách đối tượng hiện diện',khu1:'Danh sách Khu I',khu2:'Danh sách Khu II',khu3:'Danh sách Khu III',health:'Danh sách Y tế',hospital:'Danh sách Bệnh viện',over60:'Danh sách đối tượng trên 60 tuổi',under60:'Danh sách đối tượng dưới 60 tuổi',male:'Danh sách đối tượng nam',female:'Danh sách đối tượng nữ',disabled:'Danh sách đối tượng khuyết tật',increase:'Danh sách tăng mới / tiếp nhận đối tượng',transfer:'Danh sách chuyển vị trí',status:'Danh sách hồi gia / tử vong / chuyển đi'};
   const showDetail=!!dailyReportFilter;
   const detailCount=dailyReportFilter==='active'?active.length:dailyReportFilter==='present'?present.length:dailyReportFilter==='khu1'?khu1People.length:dailyReportFilter==='khu2'?khu2People.length:dailyReportFilter==='khu3'?khu3People.length:dailyReportFilter==='health'?healthPeople.length:dailyReportFilter==='hospital'?hospitalPeople.length:dailyReportFilter==='all'?events.length:detail?((detail.match(/class=\"daily-event/g)||[]).length):0;
-  const signature=showDetail&&dailyReportFilter==='all'?`<div class="report-signature-input"><label for="reportPreparedBy">Người lập bảng</label><input id="reportPreparedBy" type="text" maxlength="120" placeholder="Nhập họ tên người lập bảng để in/xuất file"></div>`:'';
-  $('dailyReportContent').innerHTML=`<h3 style="margin:8px 0">QUÂN SỐ ĐỐI TƯỢNG ngày ${esc(date.split('-').reverse().join('/'))}</h3>${censusTable}${cards}${showDetail?`<div id="dailyDetailSection" class="section">${labels[dailyReportFilter]||labels.all} (${detailCount} mục)</div>${detail}${signature}`:''}`;
+  const signature=`<div class="report-signature-input"><label for="reportPreparedBy">Người lập bảng</label><input id="reportPreparedBy" type="text" maxlength="120" autocomplete="name" placeholder="Nhập họ tên nếu cần"></div>`;
+  // Xem báo cáo hiển thị cả bảng quân số và diễn biến đúng ngày đã chọn.
+  // Bản in/PDF vẫn chỉ lấy bảng quân số theo yêu cầu hiện tại.
+  const eventsSection = dailyReportFilter==='all' ? `<div class="section daily-events-report-section" style="font-weight:bold;border-bottom:1px solid #ddd;margin-top:18px;padding-bottom:6px">DIỄN BIẾN GHI NHẬN NGÀY ${esc(date.split('-').reverse().join('/'))}</div><div class="daily-events-report-list">${detail}</div>` : '';
+  $('dailyReportContent').innerHTML=`<div class="daily-census-report-section"><h3 style="margin:8px 0">BÁO CÁO QUÂN SỐ ĐỐI TƯỢNG NGÀY ${esc(date.split('-').reverse().join('/'))}</h3>${censusTable}${signature}</div>${eventsSection}`;
 }
 function downloadFormattedExcel(filename,rows){
   // Xuất HTML tương thích Excel với tiêu đề gộp, cột có độ rộng hợp lý và không ép ngày vào cột quá hẹp.
@@ -992,16 +995,30 @@ function downloadFormattedExcel(filename,rows){
 }
 function downloadCsvFile(filename,rows){ return downloadFormattedExcel(filename,rows); }
 function exportDailyReportFile(){
+  const enteredName=($('reportPreparedBy')?.value||'').trim();
   renderDailyReport();
+  if($('reportPreparedBy'))$('reportPreparedBy').value=enteredName;
   const date=$('dailyReportDate')?.value||localDateKey();
-  const events=allDailyEvents().filter(e=>(e.date||localDateKey(e.dateTime))===date);
-  const rows=[['BÁO CÁO DIỄN BIẾN HẰNG NGÀY'],['Ngày báo cáo',formatDateVN(date)],[],['STT','Nội dung','Tổng số','Nam','Nữ','Trên 60','Ghi chú']];
+  // Excel gồm bảng quân số và các diễn biến thuộc đúng ngày đã chọn.
+  const rows=[['BÁO CÁO QUÂN SỐ ĐỐI TƯỢNG'],['Ngày báo cáo',formatDateVN(date)],[],['STT','Nội dung','Tổng số','Nam','Nữ','Trên 60','Ghi chú']];
   const table=$('dailyReportContent')?.querySelector('.census-report tbody');
   if(table){[...table.rows].forEach(tr=>rows.push([...tr.cells].map(td=>td.innerText.trim())));}
-  rows.push([],['DANH SÁCH DIỄN BIẾN TRONG NGÀY'],['Thời gian','Họ và tên','Mã đối tượng','Diễn biến','Từ','Đến / trạng thái','Lý do / ghi chú','Người ghi nhận']);
-  events.forEach(e=>rows.push([e.dateTime||'',e.ten||'',e.ma||'',e.title||'',e.from||'',e.to||'',e.reason||'',e.by||'']));
-  if(!events.length)rows.push(['','','','Không có diễn biến được ghi nhận trong ngày đã chọn']);
-  downloadCsvFile('Bao_cao_dien_bien_'+date+'.csv',rows);
+  rows.push([],['DIỄN BIẾN GHI NHẬN NGÀY '+formatDateVN(date)],['Nội dung diễn biến','Họ tên đối tượng','Mã ĐT','Từ','Đến / trạng thái','Lý do / ghi chú','Thời gian','Người ghi nhận']);
+  const eventCards=[...($('dailyReportContent')?.querySelectorAll('.daily-events-report-list .daily-event')||[])];
+  if(eventCards.length){
+    eventCards.forEach(card=>{
+      const txt=el=>el?.innerText?.trim()||'';
+      const title=txt(card.querySelector(':scope > div:first-child'));
+      const movement=txt(card.querySelector('.movement'));
+      const name=movement.split('— Mã ĐT:')[0]?.trim()||'';
+      const code=movement.includes('— Mã ĐT:')?movement.split('— Mã ĐT:')[1].trim():'';
+      const divs=[...card.querySelectorAll(':scope > div')].map(el=>el.innerText.trim());
+      const field=prefix=>divs.find(v=>v.startsWith(prefix))?.slice(prefix.length).trim()||'';
+      rows.push([title,name,code,field('Từ:'),field('Đến / trạng thái:'),field('Lý do / ghi chú:'),field('Thời gian ghi nhận:'),field('Người ghi nhận:')]);
+    });
+  } else rows.push(['Không có diễn biến được ghi nhận trong ngày đã chọn.']);
+  if(enteredName)rows.push([],[],['','','','','','Người lập bảng:',enteredName]);
+  downloadCsvFile('Bao_cao_quan_so_va_dien_bien_'+date+'.xls',rows);
 }
 
 
@@ -1026,13 +1043,14 @@ function writeReportWindow(win, html){
 }
 
 function printDailyReport(){
-  renderDailyReport();
-  const date=$('dailyReportDate')?.value||localDateKey();
-  const content=$('dailyReportContent')?.innerHTML||'';
   const preparedBy=($('reportPreparedBy')?.value||'').trim();
-  const printableContent=content.replace(/<input id=\"reportPreparedBy\"[^>]*>/,preparedBy?`<div style=\"min-width:220px;text-align:right;border-bottom:1px solid #333;padding:6px 0 3px\">${esc(preparedBy)}</div>`:'<div style=\"min-width:220px;border-bottom:1px solid #333;height:28px\"></div>');
-  const reportHtml = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Báo cáo diễn biến ${date}</title><style>body{font-family:Arial,sans-serif;color:#243447;margin:22px}h2,h3{text-align:center} .daily-report-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.daily-report-stat{border:1px solid #cbd5e1;padding:9px;text-align:center}.daily-report-stat b{display:block;font-size:20px}.daily-event{border:1px solid #cbd5e1;border-left:4px solid #347f99;padding:10px;margin:8px 0;break-inside:avoid}.meta{font-size:11px;color:#475569;margin-top:5px}button{display:none}.section{font-weight:bold;border-bottom:1px solid #ddd;margin-top:18px}.census-report-wrap{overflow:visible}.census-report{width:100%;min-width:0;border-collapse:collapse;font-family:"Times New Roman",serif}.census-report th,.census-report td{border:1px solid #222;padding:7px 5px;text-align:center;color:#111;font-size:12pt;font-family:"Times New Roman",serif}.census-report th{background:#fff;color:#111;position:static}.census-report td:nth-child(2){text-align:left;font-weight:bold}.census-report td:nth-child(3){font-weight:bold}@page{size:A4 landscape;margin:0}@media print{body{margin:10mm}}</style></head><body>${printableContent}<script>window.onload=()=>setTimeout(()=>window.print(),250);<\\/script></body></html>`;
-  showReportInApp(reportHtml,'Báo cáo diễn biến hằng ngày');
+  renderDailyReport();
+  if($('reportPreparedBy'))$('reportPreparedBy').value=preparedBy;
+  const date=$('dailyReportDate')?.value||localDateKey();
+  const content=$('dailyReportContent')?.querySelector('.daily-census-report-section')?.outerHTML||$('dailyReportContent')?.innerHTML||'';
+  const printableContent=content.replace(/<input id=\"reportPreparedBy\"[^>]*>/,preparedBy?`<div style=\"min-width:220px;text-align:right;border-bottom:1px solid #333;padding:6px 0 3px\">${esc(preparedBy)}</div>`:'<div style=\"min-width:220px;min-height:20px;text-align:right;border-bottom:1px solid #333;padding:6px 0 3px\"></div>');
+  const reportHtml = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Báo cáo quân số ${date}</title><style>body{font-family:Arial,sans-serif;color:#243447;margin:22px}h2,h3{text-align:center} .daily-report-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.daily-report-stat{border:1px solid #cbd5e1;padding:9px;text-align:center}.daily-report-stat b{display:block;font-size:20px}.daily-event{border:1px solid #cbd5e1;border-left:4px solid #347f99;padding:10px;margin:8px 0;break-inside:avoid}.meta{font-size:11px;color:#475569;margin-top:5px}button{display:none}.section{font-weight:bold;border-bottom:1px solid #ddd;margin-top:18px}.census-report-wrap{overflow:visible}.census-report{width:100%;min-width:0;border-collapse:collapse;font-family:"Times New Roman",serif}.census-report th,.census-report td{border:1px solid #222;padding:7px 5px;text-align:center;color:#111;font-size:12pt;font-family:"Times New Roman",serif}.census-report th{background:#fff;color:#111;position:static}.census-report td:nth-child(2){text-align:left;font-weight:bold}.census-report td:nth-child(3){font-weight:bold}@page{size:A4 landscape;margin:0}@media print{body{margin:10mm}}</style></head><body>${printableContent}<script>window.onload=()=>setTimeout(()=>window.print(),250);<\\/script></body></html>`;
+  showReportInApp(reportHtml,'Báo cáo quân số đối tượng');
 }
 
 async function savePerson(e){
@@ -1474,7 +1492,7 @@ function renderCensusHouse(n, query=''){
    $('censusContent').innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn gray" onclick="censusHouseFilter='all';censusHouseListVisible=false;renderCensusHouse(${n})">← Quay lại màn trước</button><button type="button" class="btn gray" onclick="returnMainInterface()">⌂ Quay ra giao diện chính</button></div><h3>${house} — ${houseFilterLabels[censusHouseFilter]||'Danh sách'} (${list.length})</h3><button type="button" class="btn green" onclick="openPersonForHouse(${n})">＋ Thêm đối tượng vào ${house}</button><input type="search" class="house-search" placeholder="Tìm theo tên hoặc mã đối tượng..." value="${esc(query)}" oninput="renderCensusHouse(${n},this.value)" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:8px;margin:8px 0 12px">${censusPeopleHtml(list)}`;
    const filterInput=$('censusContent').querySelector('.house-search');if(filterInput){filterInput.focus();filterInput.setSelectionRange(query.length,query.length);}return;
  }
- $('censusContent').innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn gray" onclick="openCensusZone('${z}')">← Quay lại màn trước</button><button type="button" class="btn gray" onclick="returnMainInterface()">⌂ Quay ra giao diện chính</button></div><h3>${house} — ${all.length} đối tượng</h3><button type="button" class="btn green" onclick="openPersonForHouse(${n})">＋ Thêm đối tượng vào ${house}</button><div class="duty-house-inline"><b>👥 Cán bộ quản lý nhà hôm nay</b>${dutyHouseLabelHtml(house)}</div><input type="search" class="house-search" placeholder="Tìm theo tên hoặc mã đối tượng..." value="${esc(query)}" oninput="renderCensusHouse(${n},this.value)" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:8px;margin:8px 0 12px"><button type="button" class="btn purple" onclick="toggleCensusHouseDx(${n})">＋ Khám đột xuất</button><button type="button" class="btn green" style="margin-left:6px" onclick="showHouseReviewPanel(${n})">📅 Lịch tái khám</button><button type="button" class="btn blue" style="margin-left:6px" onclick="openMoneyExport('RUT',${n})">💵 Đối tượng BTXH rút tiền</button><button type="button" class="btn purple" style="margin-left:6px" onclick="openMoneyExport('GUI',${n})">💰 Đối tượng BTXH gửi tiền</button><div id="houseReviewPanel"></div>${censusDxSearchOpen?`<div style="margin:10px 0;padding:12px;border:1px solid #d8dee8;border-radius:8px"><label for="houseDxSearch">Tìm đối tượng để khám đột xuất</label><input id="houseDxSearch" type="search" placeholder="Nhập tên hoặc mã đối tượng..." oninput="renderCensusHouseDxSearch(${n},this.value)" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:8px;margin:8px 0"><div id="houseDxSearchResults"><div class="notice">Nhập tên hoặc mã đối tượng để chọn người cần khám đột xuất.</div></div></div>`:''}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><label for="censusReportPeriod">Báo cáo:</label><select id="censusReportPeriod" style="padding:9px;border:1px solid #cbd5e1;border-radius:8px"><option value="week">Theo tuần</option><option value="month">Theo tháng</option><option value="6months">6 tháng</option><option value="year">1 năm</option></select><button class="btn blue" onclick="exportCensusHouseReport(${n})">Xuất báo cáo PDF</button><button class="btn purple" onclick="exportCensusHouseCsv(${n})">Xuất file Excel (CSV)</button></div>${`<div class="health-group-grid"><button type="button" class="health-group stable" onclick="filterCensusHouse(${n},'healthStable')"><b>🟢 Sức khỏe ổn định</b><strong>${healthAssigned.filter(p=>(p.phanLoaiSucKhoe||'Sức khỏe ổn định')==='Sức khỏe ổn định'&&currentLocation(p)==='Khu').length}</strong></button><button type="button" class="health-group watch" onclick="filterCensusHouse(${n},'healthWatch')"><b>🟡 Cần theo dõi</b><strong>${healthAssigned.filter(p=>p.phanLoaiSucKhoe==='Cần theo dõi'&&currentLocation(p)==='Khu').length}</strong></button><button type="button" class="health-group special" onclick="filterCensusHouse(${n},'healthSpecial')"><b>🔴 Cần chăm sóc đặc biệt</b><strong>${healthAssigned.filter(p=>p.phanLoaiSucKhoe==='Cần chăm sóc đặc biệt'&&currentLocation(p)==='Khu').length}</strong></button><button type="button" class="health-group away" onclick="filterCensusHouse(${n},'healthMedical')"><b>🔵 Đang ở Y tế</b><strong>${healthAssigned.filter(p=>currentLocation(p)==='Phòng Y tế').length}</strong></button><button type="button" class="health-group away" onclick="filterCensusHouse(${n},'healthHospital')"><b>🏥 Đang ở Bệnh viện</b><strong>${healthAssigned.filter(p=>currentLocation(p)==='Bệnh viện').length}</strong></button></div>`}${censusStatsHtml(list,n)}<div id="houseFilteredPeople">${(censusHouseListVisible||q)?censusPeopleHtml(list):''}</div>`;
+ $('censusContent').innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn gray" onclick="openCensusZone('${z}')">← Quay lại màn trước</button><button type="button" class="btn gray" onclick="returnMainInterface()">⌂ Quay ra giao diện chính</button></div><h3>${house} — ${all.length} đối tượng</h3><button type="button" class="btn green" onclick="openPersonForHouse(${n})">＋ Thêm đối tượng vào ${house}</button><div class="duty-house-inline"><b>👥 Cán bộ quản lý nhà hôm nay</b>${dutyHouseLabelHtml(house)}</div><input type="search" class="house-search" placeholder="Tìm theo tên hoặc mã đối tượng..." value="${esc(query)}" oninput="renderCensusHouse(${n},this.value)" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:8px;margin:8px 0 12px"><button type="button" class="btn purple" onclick="toggleCensusHouseDx(${n})">＋ Khám đột xuất</button><button type="button" class="btn green" style="margin-left:6px" onclick="showHouseReviewPanel(${n})">📅 Lịch tái khám</button><button type="button" class="btn blue" style="margin-left:6px" onclick="openMoneyExport('RUT',${n})">💵 Đối tượng BTXH rút tiền</button><button type="button" class="btn purple" style="margin-left:6px" onclick="openMoneyExport('GUI',${n})">💰 Đối tượng BTXH gửi tiền</button><div id="houseReviewPanel"></div>${censusDxSearchOpen?`<div style="margin:10px 0;padding:12px;border:1px solid #d8dee8;border-radius:8px"><label for="houseDxSearch">Tìm đối tượng để khám đột xuất</label><input id="houseDxSearch" type="search" placeholder="Nhập tên hoặc mã đối tượng..." oninput="renderCensusHouseDxSearch(${n},this.value)" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #cbd5e1;border-radius:8px;margin:8px 0"><div id="houseDxSearchResults"><div class="notice">Nhập tên hoặc mã đối tượng để chọn người cần khám đột xuất.</div></div></div>`:''}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><label for="censusReportPeriod">Báo cáo:</label><select id="censusReportPeriod" style="padding:9px;border:1px solid #cbd5e1;border-radius:8px"><option value="week">Theo tuần</option><option value="month">Theo tháng</option><option value="6months">6 tháng</option><option value="year">1 năm</option></select><button class="btn blue" onclick="exportCensusHouseReport(${n})">Xuất báo cáo PDF</button><button class="btn purple" onclick="exportCensusHouseCsv(${n})">Xuất file Excel</button></div>${`<div class="health-group-grid"><button type="button" class="health-group stable" onclick="filterCensusHouse(${n},'healthStable')"><b>🟢 Sức khỏe ổn định</b><strong>${healthAssigned.filter(p=>(p.phanLoaiSucKhoe||'Sức khỏe ổn định')==='Sức khỏe ổn định'&&currentLocation(p)==='Khu').length}</strong></button><button type="button" class="health-group watch" onclick="filterCensusHouse(${n},'healthWatch')"><b>🟡 Cần theo dõi</b><strong>${healthAssigned.filter(p=>p.phanLoaiSucKhoe==='Cần theo dõi'&&currentLocation(p)==='Khu').length}</strong></button><button type="button" class="health-group special" onclick="filterCensusHouse(${n},'healthSpecial')"><b>🔴 Cần chăm sóc đặc biệt</b><strong>${healthAssigned.filter(p=>p.phanLoaiSucKhoe==='Cần chăm sóc đặc biệt'&&currentLocation(p)==='Khu').length}</strong></button><button type="button" class="health-group away" onclick="filterCensusHouse(${n},'healthMedical')"><b>🔵 Đang ở Y tế</b><strong>${healthAssigned.filter(p=>currentLocation(p)==='Phòng Y tế').length}</strong></button><button type="button" class="health-group away" onclick="filterCensusHouse(${n},'healthHospital')"><b>🏥 Đang ở Bệnh viện</b><strong>${healthAssigned.filter(p=>currentLocation(p)==='Bệnh viện').length}</strong></button></div>`}${censusStatsHtml(list,n)}<div id="houseFilteredPeople">${(censusHouseListVisible||q)?censusPeopleHtml(list):''}</div>`;
  const input=$('censusContent').querySelector('.house-search');if(input){input.focus();input.setSelectionRange(query.length,query.length);}
 }
 
@@ -1748,8 +1766,9 @@ function renderDutyPanel(){
   const checklist=$('dutyChecklist');if(!checklist)return;
   checklist.innerHTML=DUTY_LOCATIONS.map((location,i)=>{
     const item=roster.items[location]||{};const checked=!!item.selected;
-    // Đã phân công thì không cho bỏ chọn; người dùng vẫn được sửa tên cán bộ.
-    return `<div class="duty-choice"><label><input type="checkbox" id="dutyCheck${i}" ${checked?'checked disabled':''} onchange="toggleDutyName(${i})"><span>${esc(location)}</span></label><div id="dutyNameWrap${i}" class="duty-name ${checked?'show':''}"><label for="dutyName${i}" style="font-size:12px;margin-bottom:4px">Tên cán bộ trực</label><input id="dutyName${i}" value="${esc(item.name||'')}" placeholder="Nhập họ tên cán bộ" autocomplete="off"></div></div>`
+    // Chỉ ADMIN được bỏ chọn phân công đã lưu để xóa; tài khoản khác chỉ được sửa tên.
+    const lockSaved=checked&&!isAdmin()?'disabled':'';
+    return `<div class="duty-choice"><label><input type="checkbox" id="dutyCheck${i}" ${checked?'checked':''} ${lockSaved} onchange="toggleDutyName(${i})"><span>${esc(location)}</span></label><div id="dutyNameWrap${i}" class="duty-name ${checked?'show':''}"><label for="dutyName${i}" style="font-size:12px;margin-bottom:4px">Tên cán bộ trực</label><input id="dutyName${i}" value="${esc(item.name||'')}" placeholder="Nhập họ tên cán bộ" autocomplete="off"></div></div>`
   }).join('');
   renderDutyResults(roster);
 }
@@ -1757,8 +1776,8 @@ function toggleDutyName(index){const wrap=$('dutyNameWrap'+index),check=$('dutyC
 function resetDutyForm(){
   const saved=readDutyRoster().items||{};
   DUTY_LOCATIONS.forEach((location,i)=>{
-    // Chỉ bỏ các lựa chọn chưa lưu; phân công hiện có và tên đã lưu được giữ nguyên.
-    if(saved[location]?.selected)return;
+    // ADMIN có thể bỏ chọn cả phân công đã lưu; tài khoản khác chỉ bỏ lựa chọn chưa lưu.
+    if(saved[location]?.selected&&!isAdmin())return;
     const check=$('dutyCheck'+i),wrap=$('dutyNameWrap'+i),input=$('dutyName'+i);
     if(check)check.checked=false;if(wrap)wrap.classList.remove('show');if(input)input.value='';
   });
@@ -1779,8 +1798,9 @@ async function saveDutyRoster(){
       const check=$('dutyCheck'+i);
       const checked=!!check?.checked || !!previous?.selected;
       const name=($('dutyName'+i)?.value||'').trim();
-      // Không cho xóa phân công cũ; nếu ô tên cũ trống thì giữ tên đã lưu.
+      // ADMIN được xóa phân công đã lưu bằng cách bỏ chọn nhà; tài khoản khác không được xóa.
       if(previous?.selected){
+        if(isAdmin()&&!checked){delete items[location];return;}
         if(!name){invalid=location;return;}
         items[location]={...previous,selected:true,name};
       }else if(checked){
@@ -1796,7 +1816,7 @@ async function saveDutyRoster(){
     if(!r.ok)throw new Error(raw||('HTTP '+r.status));
     dutyRosterCache={date:today,items,updatedAt:new Date(payload.updated_at).toLocaleString('vi-VN')};
     renderDutyPanel();updateDutyHouseLabels();
-    alert('Đã cập nhật phân công cán bộ hôm nay. Tên mới sẽ hiển thị ở nhà tương ứng trên các máy tính và điện thoại. Phân công đã lưu không thể bỏ chọn hoặc xóa; dữ liệu chỉ có hiệu lực trong ngày hiện tại.');
+    alert('Đã cập nhật phân công cán bộ hôm nay. Tên mới sẽ hiển thị ở nhà tương ứng trên các máy tính và điện thoại.'+(isAdmin()?' Phân công đã bỏ chọn đã được xóa.':'')+' Dữ liệu chỉ có hiệu lực trong ngày hiện tại.');
   }catch(err){
     console.error('Lưu cán bộ quản lý nhà hôm nay thất bại:',err);
     alert('Chưa cập nhật được lên hệ thống dùng chung. Hãy kiểm tra kết nối và bảng daily_duty_roster trong Supabase.\n\nChi tiết: '+(err?.message||String(err)));
@@ -2011,7 +2031,7 @@ function todayLocalKey(){const d=new Date();return d.getFullYear()+'-'+String(d.
 function readMeal(){try{const item=JSON.parse(localStorage.getItem(MEAL_STORAGE_KEY)||'null');if(!item||item.date!==todayLocalKey()){if(item)localStorage.removeItem(MEAL_STORAGE_KEY);return null}return item}catch(e){return null}}
 function renderMeal(){const item=readMeal();const dateLabel=$('mealDateLabel'),info=$('mealCurrentInfo'),notice=$('mealUpdateNotice');if(dateLabel)dateLabel.textContent='Ngày '+new Date().toLocaleDateString('vi-VN')+' · Chỉ hiển thị trong ngày hiện tại';if(!info)return;if(!item){info.textContent='Chưa có thực đơn hôm nay.';if(notice)notice.style.display='none';return}info.innerHTML='Đã tải lên: '+esc(item.name||'Thực đơn')+' <span style="font-weight:400">('+esc(item.sizeLabel||'file')+')</span>';if(notice){notice.innerHTML='📢 Thực đơn hôm nay đã được cập nhật!<small>'+esc(item.name||'Thực đơn')+' · Thời gian cập nhật: '+esc(item.uploadedAt||'')+'</small>';notice.style.display='block'}}
 window.addEventListener('storage',function(e){if(e.key===MEAL_STORAGE_KEY){renderMeal();}});
-function openMealModal(){renderMeal();$('mealUploadArea').style.display='none';$('mealViewerActions').style.display='flex';const item=readMeal();const viewer=$('mealViewer');if(!item){viewer.innerHTML=''}else{const isImage=/^image\//.test(item.type||'');viewer.innerHTML='<div><b>'+esc(item.name)+'</b>'+(isImage?'<div style="margin-top:10px"><img class="meal-preview" src="'+item.data+'" alt="Thực đơn hôm nay"></div>':'')+'</div>';if(!isImage){$('mealViewerActions').insertAdjacentHTML('afterbegin','<button type="button" class="btn blue" onclick="openMealFile()">Mở file thực đơn</button>')}}openModal('mealModal')}
+function openMealModal(){renderMeal();$('mealUploadArea').style.display='none';$('mealViewerActions').style.display='flex';const item=readMeal();const viewer=$('mealViewer');if(!item){viewer.innerHTML=''}else{const isImage=/^image\//.test(item.type||'');const isPdf=/pdf/i.test(item.type||'')||/\.pdf$/i.test(item.name||'');viewer.innerHTML='<div><b>'+esc(item.name)+'</b>'+(isImage?'<div style="margin-top:10px"><img class="meal-preview" src="'+item.data+'" alt="Thực đơn hôm nay"></div>':(isPdf?'<div style="margin-top:10px;height:76vh"><iframe title="Xem thực đơn hôm nay" src="'+item.data+'" style="width:100%;height:100%;border:1px solid #d8e5dc;border-radius:8px;background:white"></iframe></div>':'<div style="margin-top:10px" class="notice">Nhấn “Mở file thực đơn” để xem nội dung đầy đủ.</div>'))+'</div>';if(!isImage&&!isPdf){$('mealViewerActions').insertAdjacentHTML('afterbegin','<button type="button" class="btn blue" onclick="openMealFile()">Mở file thực đơn</button>')}}openModal('mealModal')}
 function openMealUpload(){openMealModal();$('mealUploadArea').style.display='block';$('mealViewerActions').style.display='none'}
 function saveMealFile(){const file=$('mealFile').files[0];if(!file){alert('Vui lòng chọn file thực đơn.');return}if(file.size>4*1024*1024){alert('File lớn hơn 4 MB. Vui lòng chọn file nhỏ hơn để lưu trên trình duyệt.');return}const reader=new FileReader();reader.onload=()=>{try{const item={date:todayLocalKey(),name:file.name,type:file.type||'application/octet-stream',sizeLabel:(file.size/1024).toFixed(0)+' KB',uploadedAt:new Date().toLocaleString('vi-VN'),data:reader.result};localStorage.setItem(MEAL_STORAGE_KEY,JSON.stringify(item));$('mealFile').value='';renderMeal();openMealModal();alert('Đã cập nhật thực đơn hôm nay trên thiết bị này. Thông báo cập nhật đã hiển thị trên giao diện phần mềm. Lưu ý: thiết bị khác chưa nhận được thông báo nếu chưa dùng kho lưu trữ chung.')}catch(err){alert('Không lưu được file trên trình duyệt. Vui lòng chọn file nhỏ hơn.')}};reader.readAsDataURL(file)}
 function openMealFile(){const item=readMeal();if(!item)return;const a=document.createElement('a');a.href=item.data;a.download=item.name||'thuc_don_hom_nay';a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove()}
