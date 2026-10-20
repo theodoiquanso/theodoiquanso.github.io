@@ -196,8 +196,11 @@ table{width:100%;border-collapse:collapse;min-width:1000px}th,td{padding:10px;bo
 <select id="filterStatus" onchange="render()"><option value="all">Tất cả trạng thái</option><option>Đang quản lý</option><option>Hồi gia</option><option>Tử vong</option><option>Chuyển đi nơi khác</option></select>
 <select id="filterLocation" onchange="render()"><option value="all">Tất cả vị trí</option><option>Khu</option><option>Phòng Y tế</option><option>Bệnh viện</option></select>
 <button class="btn blue manager-only" style="display:none" onclick="exportData()">Sao lưu danh sách đang xem</button>
-<button class="btn gray manager-only" style="display:none" onclick="document.getElementById('importFile').click()">Khôi phục</button>
+<button class="btn gray manager-only" style="display:none" onclick="document.getElementById('importFile').click()">Khôi phục bản sao lưu</button>
 <input id="importFile" type="file" accept=".json" hidden onchange="importData(event)">
+<button id="importExcelBtn" class="btn green" style="display:none" type="button" onclick="document.getElementById('importExcelFile').click()">⬆ Import Excel danh sách</button>
+<button id="downloadImportTemplateBtn" class="btn blue" style="display:none" type="button" onclick="downloadImportTemplate()">⬇ Tải mẫu Excel</button>
+<input id="importExcelFile" type="file" accept=".xlsx,.xls" hidden onchange="importPeopleExcel(event)">
 </div>
 
 <div class="table-wrap" id="mainPeopleTableWrap">
@@ -645,6 +648,9 @@ function updateAuthUI(){
   document.querySelectorAll('.manager-add-only').forEach(x=>x.style.display=m?'inline-block':'none');
   document.querySelectorAll('.public-add-only').forEach(x=>x.style.display='inline-block');
   const importInput=$('importFile'); if(importInput) importInput.style.display='none';
+  const excelAllowed=canImportExcel();
+  if($('importExcelBtn'))$('importExcelBtn').style.display=excelAllowed?'inline-block':'none';
+  if($('downloadImportTemplateBtn'))$('downloadImportTemplateBtn').style.display=excelAllowed?'inline-block':'none';
 }
 function restoreSession(){try{const s=JSON.parse(localStorage.getItem(SESSION_KEY)||'null');if(s?.access_token)managerSession=s}catch(e){managerSession=null}updateAuthUI();if(managerSession?.refresh_token)refreshSession(false);if(managerSession?.access_token)loadMyPermission().then(()=>{updateAuthUI();render()}).catch(()=>{managerPermission=null;managerSession=null;localStorage.removeItem(SESSION_KEY);updateAuthUI()})}
 function toggleLoginHouse(){
@@ -1702,6 +1708,69 @@ function showDashboardList(type){
  $('dashboardListTitle').textContent=title;$('dashboardListBody').innerHTML=html;$('dashboardList').style.display='grid';$('dashboardList').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function setLocationFilter(v){$('filterLocation').value=v;render()}
+function canImportExcel(){
+  if(!managerSession?.access_token)return false;
+  if(isAdmin())return true;
+  if(!isManager()||!managerPermission||managerPermission.trang_thai!==true)return false;
+  const role=String(getUserRole()||'').toLowerCase(),scope=normalizeHouseScope(getAssignedHouse());
+  const houseRole=['quan_ly','nguoi_dung','manager','house_manager'].includes(role)&&/^nhà (1[01]|[1-9])$/.test(scope);
+  const medicalRole=['y_te','medical'].includes(role)||scope==='y tế';
+  return houseRole||medicalRole;
+}
+function downloadImportTemplate(){
+  if(!canImportExcel()){alert('Chỉ ADMIN, tài khoản Nhà 1–11 và tài khoản Y tế được tải mẫu/import Excel.');return;}
+  if(!window.ExcelJS){alert('Chưa tải được thư viện Excel. Vui lòng kiểm tra kết nối mạng rồi thử lại.');return;}
+  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Danh sách đối tượng');
+  ws.addRow(['Mã đối tượng','Số sổ','Họ và tên','Năm sinh','Giới tính','Khuyết tật','Có CCCD','Số CCCD','Ngày nhập Trung tâm','Nhà / Y tế','Địa chỉ','Họ tên người thân','Quan hệ','Số điện thoại người thân','Đang ở','Phân loại sức khỏe','BHYT','Ngày tái khám gần nhất','Tên bệnh viện','Trạng thái','Ngày trạng thái']);
+  ws.getRow(1).font={bold:true,color:{argb:'FFFFFFFF'}};ws.getRow(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF2C3E50'}};ws.views=[{state:'frozen',ySplit:1}];ws.autoFilter={from:{row:1,column:1},to:{row:1,column:21}};
+  [18,14,24,12,12,13,12,16,20,15,28,24,18,22,16,24,20,22,24,24,18].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  ws.addRow(['VD001','','NGUYỄN VĂN A',1960,'Nam','Không','Không','','01/01/2020','Nhà 1','Địa chỉ','','','','Khu','Sức khỏe ổn định','','','','Đang quản lý','']);ws.getRow(2).font={italic:true,color:{argb:'FF64748B'}};
+  wb.xlsx.writeBuffer().then(buf=>{const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Mau_Import_Theo_Doi_Quan_So.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}).catch(err=>alert('Không tạo được mẫu Excel: '+err.message));
+}
+function importExcelDate(value){
+  if(value===null||value===undefined||value==='')return '';
+  if(value instanceof Date&&!isNaN(value))return value.toISOString().slice(0,10);
+  const str=String(value).trim();let m=str.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if(m)return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  m=str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  if(typeof value==='number'){const d=new Date(Date.UTC(1899,11,30)+value*86400000);if(!isNaN(d))return d.toISOString().slice(0,10);}return '';
+}
+function importCell(row,index){const v=row.getCell(index).value;if(v&&typeof v==='object'&&'text'in v)return String(v.text||'').trim();if(v instanceof Date)return v.toISOString().slice(0,10);return v===null||v===undefined?'':String(v).trim()}
+function importHeaderKey(v){return String(v||'').trim().toLocaleLowerCase('vi-VN').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/[^a-z0-9]/g,'')}
+async function importPeopleExcel(e){
+  const file=e.target.files?.[0];if(!file)return;
+  try{
+    if(!canImportExcel())throw new Error('Chỉ ADMIN, tài khoản Nhà 1–11 và tài khoản Y tế được Import Excel.');
+    if(!window.ExcelJS)throw new Error('Không tải được thư viện Excel. Vui lòng kiểm tra kết nối mạng.');
+    const wb=new ExcelJS.Workbook();await wb.xlsx.load(await file.arrayBuffer());const ws=wb.worksheets[0];if(!ws||ws.rowCount<2)throw new Error('File Excel không có dữ liệu.');
+    const headersMap={};ws.getRow(1).eachCell((cell,col)=>headersMap[importHeaderKey(cell.value)]=col);
+    const aliases={ma:['madoituong','madt','ma'],soSo:['soso','sosobtxh'],ten:['hovaten','ten','hoten'],namsinh:['namsinh'],gioitinh:['gioitinh'],khuyettat:['khuyettat','doituongkhuyettat'],coCccd:['cocccd','cccd'],cccd:['socccd','cccdso'],ngaynhap:['ngaynhaptrungtam','ngaynhap'],nha:['nhayte','nha','phamvi'],diachi:['diachi'],nguoiThan:['hotennguoithan','nguoithan'],quanHe:['quanhe'],sdtNguoiThan:['sodienthoainguoithan','sdtnguoithan','sodienthoai'],vitri:['dango','vitri'],phanLoaiSucKhoe:['phanloaisuckhoe','vitritheodoi'],bhyt:['bhyt','sothebhyt'],ngayTaiKham:['ngaytaikhamgannhat','ngaytaikham'],bvInfo:['tenbenhvien','benhvien'],trangthai:['trangthai'],statusDate:['ngaytrangthai','ngaytrangthaihoso']};
+    const col={};for(const [key,names] of Object.entries(aliases)){for(const name of names){const idx=headersMap[importHeaderKey(name)];if(idx){col[key]=idx;break;}}}
+    if(!col.ma||!col.ten)throw new Error('File cần có ít nhất hai cột “Mã đối tượng” và “Họ và tên”. Hãy dùng nút Tải mẫu Excel.');
+    const admin=isAdmin(),medical=!admin&&isMedicalAccount(),assigned=String(getAssignedHouse()||'').trim(),prepared=[],errors=[],seen=new Set();
+    const cellValue=(row,key)=>col[key]?importCell(row,col[key]):'';
+    for(let rn=2;rn<=ws.rowCount;rn++){
+      const row=ws.getRow(rn);if(!row.hasValues)continue;const ma=cellValue(row,'ma'),ten=cellValue(row,'ten');if(!ma&&!ten)continue;
+      if(!ma||!ten){errors.push(`Dòng ${rn}: thiếu Mã đối tượng hoặc Họ và tên.`);continue;}
+      const key=ma.toLocaleLowerCase('vi-VN');if(seen.has(key)){errors.push(`Dòng ${rn}: mã ${ma} bị lặp trong file.`);continue;}seen.add(key);
+      let nha=cellValue(row,'nha').trim(),vitri=cellValue(row,'vitri')||'Khu';
+      if(admin){if(!nha)nha=['Phòng Y tế','Bệnh viện'].includes(vitri)?'Y tế':'';}
+      else if(medical){if(nha&&!['y tế','phòng y tế','y_te','medical'].includes(nha.toLocaleLowerCase('vi-VN'))){errors.push(`Dòng ${rn}: tài khoản Y tế không được import phạm vi “${nha}”.`);continue;}if(!['phòng y tế','y tế','bệnh viện'].includes(vitri.toLocaleLowerCase('vi-VN'))){errors.push(`Dòng ${rn}: tài khoản Y tế chỉ được import người đang ở Phòng Y tế/Y tế/Bệnh viện.`);continue;}nha='Y tế';vitri=vitri.toLocaleLowerCase('vi-VN')==='bệnh viện'?'Bệnh viện':'Phòng Y tế';}
+      else{if(nha&&nha!==assigned){errors.push(`Dòng ${rn}: tài khoản ${assigned} không được import dữ liệu của ${nha}.`);continue;}nha=assigned;if(['phòng y tế','bệnh viện'].includes(vitri.toLocaleLowerCase('vi-VN'))){errors.push(`Dòng ${rn}: tài khoản nhà không được import hồ sơ tại ${vitri}.`);continue;}vitri='Khu';}
+      const old=people.find(p=>String(p.ma||'').trim().toLocaleLowerCase('vi-VN')===key);if(old&&!canManagePerson(old)){errors.push(`Dòng ${rn}: mã ${ma} đã tồn tại ngoài phạm vi tài khoản.`);continue;}
+      const date=k=>importExcelDate(col[k]?row.getCell(col[k]).value:'');const get=(k,def='')=>cellValue(row,k)||def;
+      const person={...(old||{}),id:old?.id||uid(),ma,soSo:get('soSo',old?.soSo||''),ten,namsinh:get('namsinh',old?.namsinh||''),gioitinh:get('gioitinh',old?.gioitinh||''),khuyettat:get('khuyettat',old?.khuyettat||'Không'),coCccd:get('coCccd',old?.coCccd||'Không'),cccd:get('cccd',old?.cccd||''),ngaynhap:date('ngaynhap')||old?.ngaynhap||'',nha,diachi:get('diachi',old?.diachi||''),nguoiThan:get('nguoiThan',old?.nguoiThan||''),quanHe:get('quanHe',old?.quanHe||''),sdtNguoiThan:get('sdtNguoiThan',old?.sdtNguoiThan||''),vitri,phanLoaiSucKhoe:get('phanLoaiSucKhoe',old?.phanLoaiSucKhoe||'Sức khỏe ổn định'),bhyt:get('bhyt',old?.bhyt||''),ngayTaiKham:date('ngayTaiKham')||old?.ngayTaiKham||'',bvInfo:get('bvInfo',old?.bvInfo||''),trangthai:get('trangthai',old?.trangthai||'Đang quản lý'),statusDate:date('statusDate')||old?.statusDate||'',updated:new Date().toISOString()};
+      if(!['Nam','Nữ',''].includes(person.gioitinh)){errors.push(`Dòng ${rn}: giới tính phải là Nam hoặc Nữ.`);continue;}if(!['Đang quản lý','Hồi gia','Tử vong','Chuyển đi nơi khác'].includes(person.trangthai)){errors.push(`Dòng ${rn}: trạng thái không hợp lệ.`);continue;}
+      if(!old){person.khu='';person.khamDotXuat=[];person.locationHistory=[];person.readmissionHistory=[];person.dienBienHangNgay=[];}prepared.push({row:rn,p:person,old:!!old});
+    }
+    if(!prepared.length)throw new Error('Không có dòng hợp lệ để import.'+(errors.length?'\n'+errors.slice(0,12).join('\n'):''));
+    const summary=`Đọc được ${prepared.length} dòng hợp lệ: ${prepared.filter(x=>!x.old).length} hồ sơ mới, ${prepared.filter(x=>x.old).length} hồ sơ cập nhật.\n${errors.length?`\nCó ${errors.length} dòng bị bỏ qua:\n${errors.slice(0,8).join('\n')}${errors.length>8?'\n…':''}\n\n`:''}Tiếp tục ghi dữ liệu lên hệ thống dùng chung?`;
+    if(!confirm(summary))return;let saved=0;
+    for(const item of prepared){const r=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:item.p.id,data:item.p,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(`Lỗi lưu dòng Excel ${item.row}: ${await r.text()}`);saved++;}
+    await loadPeople();alert(`Import hoàn tất: đã lưu ${saved} hồ sơ (${prepared.filter(x=>!x.old).length} mới, ${prepared.filter(x=>x.old).length} cập nhật).`+(errors.length?`\nĐã bỏ qua ${errors.length} dòng không hợp lệ.`:''));
+  }catch(err){console.error(err);alert('Không thể Import Excel.\n\n'+(err.message||String(err)));}finally{e.target.value='';}
+}
+
 function exportData(){let blob=new Blob([JSON.stringify(people,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='BTXH_Tan_Hiep_backup.json';a.click();URL.revokeObjectURL(a.href)}
 function importData(e){if(!isManager()){alert('Chỉ Quản lý mới được khôi phục dữ liệu.');e.target.value='';return}let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=async()=>{try{let d=JSON.parse(r.result);if(!Array.isArray(d))throw new Error('File sao lưu không hợp lệ.');for(const p of d){if(!p.id)p.id=uid();await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:p.id,data:p,updated_at:new Date().toISOString()})})}await loadPeople();alert('Khôi phục dữ liệu thành công.')}catch(err){showCloudError(err)}finally{e.target.value=''}};r.readAsText(f)}
 
