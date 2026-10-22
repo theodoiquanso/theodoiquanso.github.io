@@ -72,7 +72,7 @@ table{width:100%;border-collapse:collapse;min-width:1000px}th,td{padding:10px;bo
 
 .meal-card{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:linear-gradient(135deg,#f0fbf3,#dff4e5);border:1px solid #a9d9b6;border-left:5px solid #27ae60;border-radius:12px;padding:14px 16px;margin:0 0 16px;box-shadow:0 2px 7px #0000000b}
 .meal-card h2{margin:0 0 4px;color:#216e39;font-size:20px}.meal-card p{margin:0;color:#4c6653;font-size:13px}.meal-actions{display:flex;gap:8px;flex-wrap:wrap}.meal-file-link{display:inline-block;max-width:100%;overflow-wrap:anywhere;margin-top:8px;font-weight:700;color:#216e39}
-.meal-preview{display:block;width:auto;max-width:100%;max-height:78vh;object-fit:contain;border:1px solid #d8e5dc;border-radius:8px;background:#f8faf9}.meal-status{margin-top:10px;padding:10px;background:#f5faf6;border-radius:8px}
+.meal-preview{display:block;width:auto;max-width:100%;max-height:78vh;object-fit:contain;border:1px solid #d8e5dc;border-radius:8px;background:#f8faf9;cursor:zoom-in}.meal-status{margin-top:10px;padding:10px;background:#f5faf6;border-radius:8px}
 /* Bảng báo cáo quân số theo mẫu in */
 .census-report-wrap{width:100%;overflow-x:auto;margin:12px 0 18px;background:#fff}
 .census-report{width:100%;border-collapse:collapse;min-width:680px;font-family:"Times New Roman",serif;color:#111}
@@ -126,6 +126,7 @@ body.meal-only-authenticated #mealOnlyBar{display:flex}
     <h2 id="authGateTitle">Đăng nhập để sử dụng phần mềm</h2>
     <p>Vui lòng đăng nhập bằng tài khoản được cấp. Nội dung bên trong chỉ hiển thị sau khi đăng nhập.</p>
     <button type="button" class="btn green" style="min-width:180px;min-height:46px" onclick="openLogin()">Đăng nhập hệ thống</button>
+    <button type="button" class="btn blue" style="display:block;margin:10px auto 0;min-width:220px;min-height:44px" onclick="openMealModal()">🍲 Xem thực đơn hôm nay (không cần đăng nhập)</button>
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e1e8ee"><p style="margin:0 0 9px;font-weight:700">Dành riêng cho người cập nhật thực đơn</p><button type="button" class="btn blue" style="min-width:220px;min-height:44px" onclick="openMealAccountLogin()">🍲 Đăng nhập tài khoản Thực đơn</button></div>
   </div>
 </div>
@@ -788,6 +789,7 @@ async function loadPeople(){
     if(!r.ok)throw new Error(await r.text());
     const rows=await r.json();
     people=rows.map(x=>Object.assign({id:x.id},x.data||{}));
+    // Tải tuần tự để giảm số truy vấn đồng thời sau đăng nhập; giữ hành vi bản gốc.
     await loadDx();
     await loadReviews();
     render();
@@ -821,6 +823,7 @@ function resetPersonForm(){
 // Ghi nhớ trang đang xem trước khi mở form sửa hồ sơ để lưu xong quay lại đúng chỗ.
 let personEditReturnState=null;
 let personEditReturnDetailId=null;
+let currentViewedPersonId=null;
 let openingPersonFromDetail=false;
 function rememberPersonEditReturnState(){
   const ids=['dutyPanel','censusPanel','dashboardList','dailyReportPanel','mainPeopleTableWrap'];
@@ -835,7 +838,10 @@ function rememberPersonEditReturnState(){
     filterLocation:$('filterLocation')?.value||'all',
     dashboardTitle:$('dashboardListTitle')?.textContent||'',
     dashboardBody:$('dashboardListBody')?.innerHTML||'',
-    censusContent:$('censusContent')?.innerHTML||''
+    censusContent:$('censusContent')?.innerHTML||'',
+    censusSearch:$('censusContent')?.querySelector('.house-search')?.value||'',
+    detailOpen:!!$('detailModal')?.classList.contains('show'),
+    detailPersonId:currentViewedPersonId
   };
 }
 function restorePersonEditReturnState(){
@@ -850,6 +856,10 @@ function restorePersonEditReturnState(){
   if($('dashboardListBody'))$('dashboardListBody').innerHTML=state.dashboardBody||'';
   if($('censusContent'))$('censusContent').innerHTML=state.censusContent||'';
   Object.entries(state.displays||{}).forEach(([id,value])=>{const el=$(id);if(el)el.style.display=value;});
+  if(state.detailOpen){
+    if(state.detailPersonId&&people.some(p=>String(p.id)===String(state.detailPersonId)))viewPerson(state.detailPersonId);
+    else{$('detailModal')?.classList.remove('show');currentViewedPersonId=null;}
+  }
   requestAnimationFrame(()=>window.scrollTo({top:state.scrollY||0,behavior:'auto'}));
 }
 
@@ -1230,7 +1240,37 @@ async function savePerson(e){
 async function delPerson(id){
   if(!isAdmin()){alert('Chỉ ADMIN mới được xóa hồ sơ đối tượng.');return;}
   const p=people.find(x=>String(x.id)===String(id));if(!p)return;if(!confirm('Xóa đối tượng '+p.ten+'?'))return;
-  try{const r=await api('so_tay_suc_khoe?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});if(!r.ok)throw new Error(await r.text());await loadPeople();}catch(err){showCloudError(err)}
+  rememberPersonEditReturnState();const prior=personEditReturnState;
+  try{
+    const r=await api('so_tay_suc_khoe?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
+    if(!r.ok)throw new Error(await r.text());
+    await loadPeople();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);alert('Đã xóa hồ sơ đối tượng.');
+  }catch(err){personEditReturnState=null;showCloudError(err)}
+}
+function refreshDashboardAfterDelete(state){
+  if(!state||!state.displays)return;
+  if(state.displays.dashboardList&&state.displays.dashboardList!=='none'){
+    const title=String(state.dashboardTitle||'');
+    if(title.includes('khám đột xuất tuần này'))showDashboardList('dxweek');
+    else if(title.includes('khám đột xuất'))showDashboardList('dx');
+    else if(title.includes('tại Nhà ')){const m=title.match(/tại (Nhà\s*\d+)/i);if(m)showDashboardList('house:'+m[1]);}
+    else if(title.includes('tại Khu'))showDashboardList('Khu');
+    else if(title==='Tất cả đối tượng')showDashboardList('all');
+    else if(title.includes('tại Y tế'))showDashboardList('Phòng Y tế');
+    else if(title.includes('Bệnh viện'))showDashboardList('Bệnh viện');
+    else if(title.includes('uống thuốc'))showDashboardList('med');
+  }
+  refreshCensusAfterDelete(state);
+}
+function refreshCensusAfterDelete(state){
+  if(!state||!state.displays||!state.displays.censusPanel||state.displays.censusPanel==='none')return;
+  const html=String(state.censusContent||'');
+  const heading=(html.match(/<h3[^>]*>([^<]*)<\/h3>/i)||[])[1]||'';
+  const houseMatch=heading.match(/Nhà\s*(1[01]|[1-9])/i);
+  if(houseMatch){
+    const n=Number(houseMatch[1]);renderCensusHouse(n,state.censusSearch||'');
+    if(html.includes('📅 Lịch tái khám'))showHouseReviewPanel(n);
+  }
 }
 function isCurrentlyManaged(p){
   const status=String(p?.trangthai||'Đang quản lý').trim().toLocaleLowerCase('vi-VN');
@@ -1366,6 +1406,7 @@ function openPersonFromDetail(id){
 
 function viewPerson(id){
   const p=people.find(x=>String(x.id)===String(id));if(!p)return;
+  currentViewedPersonId=String(id);
   const dx=(p.khamDotXuat||[]).slice().sort((a,b)=>{
     const da=parseDxDate(a.dateTime)?.getTime()||0, db=parseDxDate(b.dateTime)?.getTime()||0;
     return db-da;
@@ -1495,17 +1536,13 @@ async function deleteDx(dxId,personId=''){
  if(!isAdmin()){alert('Chỉ ADMIN mới được xóa lượt khám đột xuất.');return;}
  if(!dxId)return;
  if(!confirm('Bạn có chắc muốn xóa lượt khám đột xuất này? Thao tác này không thể hoàn tác.'))return;
+ rememberPersonEditReturnState();const prior=personEditReturnState;
  try{
    const r=await api('kham_dot_xuat?id=eq.'+encodeURIComponent(dxId),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
    if(!r.ok)throw new Error(await r.text());
-   await loadPeople();
-   if(personId && people.some(p=>String(p.id)===String(personId)))viewPerson(personId);
-   else if($('dashboardList').style.display!=='none'){
-     const title=$('dashboardListTitle').textContent;
-     showDashboardList(title.includes('tuần này')?'dxweek':'dx');
-   }
+   await loadPeople();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
    alert('Đã xóa lượt khám đột xuất.');
- }catch(err){showCloudError(err)}
+ }catch(err){personEditReturnState=null;showCloudError(err)}
 }
 async function addDx(id){openDxForm(id)}
 function openDxStats(){let all=people.flatMap(p=>(p.khamDotXuat||[]).map(d=>({...d,name:p.ten,ma:p.ma})));$('dxContent').innerHTML=`<h2>Thống kê khám đột xuất</h2><div class="notice">Tổng lượt: <b>${all.length}</b></div><div class="dx-list">${all.length?all.slice().reverse().map(d=>`<div class="dx-item"><b>${esc(d.dateTime)}</b> — ${esc(d.name)} (${esc(d.ma)})<br>Lý do: ${esc(d.reason)}<br>Hướng xử lý: ${esc(dxActionText(d.action))}</div>`).join(''):'Chưa có dữ liệu.'}</div>`;openModal('dxModal')}
@@ -1552,8 +1589,12 @@ function showCensusZoneSchedule(z){
  filterCensusZoneScheduleDate(z,localDateKeyReview());showZoneReviewPeriod(z,'today');
 }
 function zoneReviewPeriodButton(z,period,label){const list=censusListForZone(z);const count=zoneReviewRows(list,period).length;return `<button type="button" class="census-mini" onclick="showZoneReviewPeriod('${z}','${period}')"><span>${label}</span><b>${count}</b></button>`;}
-function zoneReviewRows(list,period){const now=new Date();now.setHours(23,59,59,999);const today=localDateKeyReview();const start=new Date(now);if(period==='week')start.setDate(start.getDate()-6);else if(period==='month')start.setMonth(start.getMonth()-1);else if(period==='threeMonths')start.setMonth(start.getMonth()-3);else if(period==='sixMonths')start.setMonth(start.getMonth()-6);else if(period==='year')start.setFullYear(start.getFullYear()-1);start.setHours(0,0,0,0);return list.flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>{if(!x.day)return false;if(period==='today')return latestPersonReviewDate(x.p)===today&&x.day===today;const d=new Date(x.day+'T00:00:00');return !isNaN(d)&&d>=start&&d<=now;}).sort((a,b)=>a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi'));}
-function showZoneReviewPeriod(z,period){const detail=$('zoneReviewStatsDetail');if(!detail)return;window.zoneReviewSelectedPeriod=period;const labels={today:'hôm nay',week:'trong tuần',month:'trong tháng',threeMonths:'trong 3 tháng',sixMonths:'trong 6 tháng',year:'trong 1 năm'};const selected=$('zoneReviewHouseFilter')?.value||'all';let rows=zoneReviewRows(censusListForZone(z),period);if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;detail.innerHTML=`<b>${rows.length} lượt tái khám ${labels[period]||''} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Mã đối tượng</th><th>Nhà</th><th>Vị trí</th><th>Thuốc</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(locationText(p)||'')}</td><td>${esc(meds(p)||'')}</td><td>${esc(p.tinhTrang||'')}</td><td>${esc(item.note||'')}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong kỳ này.</div>'}`;}
+function zoneReviewRows(list,period){const now=new Date();now.setHours(23,59,59,999);const today=localDateKeyReview();const start=new Date(now);if(period==='week')start.setDate(start.getDate()-6);else if(period==='month')start.setMonth(start.getMonth()-1);else if(period==='threeMonths')start.setMonth(start.getMonth()-3);else if(period==='sixMonths')start.setMonth(start.getMonth()-6);else if(period==='year')start.setFullYear(start.getFullYear()-1);start.setHours(0,0,0,0);return list.flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>{if(!x.day)return false;if(period==='today')return latestPersonReviewDate(x.p)===today&&x.day===today;const d=new Date(x.day+'T00:00:00');return !isNaN(d)&&d>=start&&d<=now;}).sort((a,b)=>{
+      const ah=Number(String(a.p.nha||'').match(/\d+/)?.[0]||999);
+      const bh=Number(String(b.p.nha||'').match(/\d+/)?.[0]||999);
+      return ah-bh || a.day.localeCompare(b.day) || String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi');
+    });}
+function showZoneReviewPeriod(z,period){const detail=$('zoneReviewStatsDetail');if(!detail)return;window.zoneReviewSelectedPeriod=period;const labels={today:'hôm nay',week:'trong tuần',month:'trong tháng',threeMonths:'trong 3 tháng',sixMonths:'trong 6 tháng',year:'trong 1 năm'};const selected=$('zoneReviewHouseFilter')?.value||'all';let rows=zoneReviewRows(censusListForZone(z),period);if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;detail.innerHTML=`<b>${rows.length} lượt tái khám ${labels[period]||''} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Năm sinh</th><th>Mã đối tượng</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.namsinh||'Chưa cập nhật')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'')}</td><td>${esc(item.note||'')}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong kỳ này.</div>'}`;}
 function filterCensusZoneScheduleDate(z,date){
   const pop=$('zoneReviewResults');if(!pop)return;
   const houseOrder=z==='elderly'?[1,2,3,4]:z==='homeless'?[5,6,7,8,9]:z==='mental'?[10,11]:[];
@@ -1563,12 +1604,12 @@ function filterCensusZoneScheduleDate(z,date){
       const ah=Number(String(a.p.nha||'').replace(/^Nhà\s*/i,''));
       const bh=Number(String(b.p.nha||'').replace(/^Nhà\s*/i,''));
       const ai=houseOrder.indexOf(ah),bi=houseOrder.indexOf(bh);
-      return (ai<0?999:ai)-(bi<0?999:bi)||a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi');
+      return ah-bh||a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi');
     });
   const escCell=v=>esc(String(v??''));
   const groups=houseOrder.map(n=>({house:'Nhà '+n,rows:rows.filter(x=>String(x.p.nha||'').trim()==='Nhà '+n)})).filter(g=>g.rows.length);
   pop.innerHTML=`<div style="margin:8px 0;font-weight:700">${date?'Ngày '+esc(formatDateVN(date)):'Tất cả ngày'} — ${rows.length} lượt tái khám</div>
-  ${groups.length?groups.map(g=>`<section style="border:1px solid #d8e3ec;border-radius:9px;margin:10px 0;overflow:hidden"><h4 style="margin:0;padding:10px 12px;background:#eaf2f8;color:#2c3e50">${escCell(g.house)} — ${g.rows.length} lượt tái khám</h4><div class="table-wrap"><table style="display:table;min-width:850px"><thead><tr><th>Ngày tái khám</th><th>Họ và tên</th><th>Mã đối tượng</th><th>Nhà</th><th>Vị trí</th><th>Thuốc</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${g.rows.map(({p,item,day})=>`<tr><td>${escCell(formatDateVN(day))}</td><td>${escCell(p.ten||'')}</td><td>${escCell(p.ma||'')}</td><td>${escCell(p.nha||'')}</td><td>${escCell(locationText(p)||'')}</td><td>${escCell(meds(p)||'')}</td><td>${escCell(p.tinhTrang||'')}</td><td>${escCell(item.note||'')}</td></tr>`).join('')}</tbody></table></div><div class="cards">${g.rows.map(({p,item,day})=>`<div class="card"><b>${escCell(formatDateVN(day))} — ${escCell(p.ten||'')}</b><div>Mã đối tượng: ${escCell(p.ma||'')}</div><div>Nhà: ${escCell(p.nha||'')} · Vị trí: ${escCell(locationText(p)||'')}</div><div>Thuốc: ${escCell(meds(p)||'')}</div><div>Tình trạng: ${escCell(p.tinhTrang||'')}</div><div>Ghi chú: ${escCell(item.note||'')}</div></div>`).join('')}</div></section>`).join(''):`<div class="notice">Không có lịch tái khám${date?' trong ngày đã chọn':''}.</div>`}
+  ${groups.length?groups.map(g=>`<section style="border:1px solid #d8e3ec;border-radius:9px;margin:10px 0;overflow:hidden"><h4 style="margin:0;padding:10px 12px;background:#eaf2f8;color:#2c3e50">${escCell(g.house)} — ${g.rows.length} lượt tái khám</h4><div class="table-wrap"><table style="display:table;min-width:850px"><thead><tr><th>Ngày tái khám</th><th>Họ và tên</th><th>Mã đối tượng</th><th>Nhà</th><th>Vị trí</th><th>Thuốc</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${g.rows.map(({p,item,day})=>`<tr><td>${escCell(formatDateVN(day))}</td><td>${escCell(p.ten||'')}</td><td>${escCell(p.ma||'')}</td><td>${escCell(p.nha||'')}</td><td>${escCell(locationText(p)||'')}</td><td>${escCell(meds(p)||'')}</td><td>${escCell(p.tinhTrang||'')}</td><td>${escCell(item.note||'')}</td></tr>`).join('')}</tbody></table></div><div class="cards">${g.rows.map(({p,item,day})=>`<div class="card"><b>${escCell(formatDateVN(day))} — ${escCell(p.ten||'')}</b><div>Mã đối tượng: ${escCell(p.ma||'')}</div><div>Năm sinh: ${escCell(p.namsinh||'Chưa cập nhật')} · Nhà: ${escCell(p.nha||'')}</div><div>Tình trạng: ${escCell(p.tinhTrang||'')}</div><div>Ghi chú: ${escCell(item.note||'')}</div></div>`).join('')}</div></section>`).join(''):`<div class="notice">Không có lịch tái khám${date?' trong ngày đã chọn':''}.</div>`}
   <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">${houseOrder.map(n=>`<button type="button" class="btn purple" onclick="openCensusZone('${z}');setTimeout(()=>{renderCensusHouse(${n});showHouseReviewPanel(${n})},0)">＋ Nhập lịch Nhà ${n}</button>`).join('')}</div>`;
 }
 let censusZoneFilter='all';
@@ -1626,7 +1667,7 @@ function renderCensusHouseDxSearch(n, query=''){
  const all=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house);
  const matches=q?all.filter(p=>String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q)):[];
  const el=$('houseDxSearchResults');if(!el)return;
- el.innerHTML=!q?'<div class="notice">Nhập tên hoặc mã đối tượng để chọn người cần khám đột xuất.</div>':(matches.length?matches.map(p=>`<div class="census-person"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')}<br><button class="btn purple" onclick="openDxForm('${p.id}')">Chọn khám đột xuất</button></div>`).join(''):'<div class="notice">Không tìm thấy đối tượng trong nhà này.</div>');
+ el.innerHTML=!q?'<div class="notice">Nhập tên hoặc năm sinh để chọn người cần khám đột xuất.</div>':(matches.length?matches.map(p=>`<div class="census-person"><b>${esc(p.ten||'')}</b> — Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')}<br><button class="btn purple" onclick="openDxForm('${p.id}')">Chọn khám đột xuất</button></div>`).join(''):'<div class="notice">Không tìm thấy đối tượng trong nhà này.</div>');
 }
 function toggleCensusHouseDx(n){censusDxSearchOpen=!censusDxSearchOpen;renderCensusHouse(n,$('censusContent').querySelector('.house-search')?.value||'');}
 function filterCensusHouse(n,key){censusHouseFilter=key;censusHouseListVisible=true;renderCensusHouse(n,$('censusContent').querySelector('.house-search')?.value||'');}
@@ -1649,7 +1690,9 @@ function renderCensusHouse(n, query=''){
 function personReviewHistory(p){
   const items=Array.isArray(p.lichTaiKham)?p.lichTaiKham.slice():[];
   if(!items.length && p.ngayTaiKham) items.push({date:String(p.ngayTaiKham).slice(0,10),createdAt:'',note:'Lịch cũ trong hồ sơ'});
-  return items.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  items.sort((a,b)=>String(b.date||'').slice(0,10).localeCompare(String(a.date||'').slice(0,10))||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  const seenDates=new Set();
+  return items.filter(item=>{const date=String(item.date||'').slice(0,10);if(!date||seenDates.has(date))return false;seenDates.add(date);return true;});
 }
 function showHouseReviewPanel(n, query='', period='all', showList=false, selectedDate=''){
   const house='Nhà '+n;
@@ -1748,11 +1791,14 @@ async function savePersonReview(e,n,id){if(isViewer()){alert('Tài khoản ngư�
 async function deletePersonReview(id,reviewId,n){
   if(!isAdmin()){alert('Chỉ ADMIN mới được xóa lịch tái khám.');return;}
   if(!confirm('Xóa riêng lượt tái khám này?'))return;
+  const query=$('censusContent').querySelector('.house-search')?.value||'';
+  rememberPersonEditReturnState();
   try{
     const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
     if(!r.ok)throw new Error(await r.text());
-    await loadPeople();renderCensusHouse(n,$('censusContent').querySelector('.house-search')?.value||'');showHouseReviewPanel(n);alert('Đã xóa lượt tái khám đã chọn.');
-  }catch(err){showCloudError(err)}
+    await loadPeople();renderCensusHouse(n,query);showHouseReviewPanel(n);personEditReturnState=null;
+    alert('Đã xóa lượt tái khám đã chọn.');
+  }catch(err){personEditReturnState=null;showCloudError(err)}
 }
 
 function exportSchedule(scope,id,format,action="preview"){
@@ -1768,7 +1814,7 @@ function exportSchedule(scope,id,format,action="preview"){
  const selectedDate=String($(dateInputId)?.value||'').slice(0,10);
  const rows=list.flatMap(p=>{
    const history=personReviewHistory(p);
-   return history.map(item=>({ngay:String(item.date||'').slice(0,10),ten:p.ten||'',namsinh:p.namsinh||'',ma:p.ma||'',nha:p.nha||'',tinhTrang:p.tinhTrang||'',ghiChu:item.note||''}));
+   return history.map(item=>({ngay:String(item.date||'').slice(0,10),ten:p.ten||'',namsinh:p.namsinh||'',ma:p.ma||'',nha:p.nha||'',tinhTrang:p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'',ghiChu:item.note||''}));
  }).filter(r=>r.ngay&&(!selectedDate||r.ngay===selectedDate)).sort((a,b)=>{
     const ah=Number(String(a.nha||'').replace(/^Nhà\s*/i,''));
     const bh=Number(String(b.nha||'').replace(/^Nhà\s*/i,''));
@@ -1779,14 +1825,14 @@ function exportSchedule(scope,id,format,action="preview"){
    const previewRows=rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escH(formatDateVN(r.ngay))}</td><td>${escH(r.ten)}</td><td>${escH(r.namsinh||'—')}</td><td>${escH(r.nha)}</td><td>${escH(r.tinhTrang)}</td><td>${escH(r.ghiChu)}</td></tr>`).join('');
    let modal=document.getElementById('schedulePreviewModal');
    if(!modal){modal=document.createElement('div');modal.id='schedulePreviewModal';modal.className='modal';modal.style.zIndex='10000';document.body.appendChild(modal);}
-   modal.innerHTML=`<div class="box" style="width:min(1200px,100%);max-height:94vh"><button class="close" type="button" onclick="closeModal('schedulePreviewModal')">×</button><h2>👁 Xem trước báo cáo lịch tái khám</h2><p><b>${escH(label)}</b> · Ngày lọc: ${selectedDate?escH(formatDateVN(selectedDate)):'Tất cả ngày'} · ${rows.length} lượt tái khám</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><button type="button" class="btn green" onclick="exportSchedule('${scope}','${String(id).replace(/'/g,"\\'")}','csv','download')">⬇ Xuất file Excel</button><button type="button" class="btn blue" onclick="exportSchedule('${scope}','${String(id).replace(/'/g,"\\'")}','pdf','print')">🖨 In / Lưu PDF</button><button type="button" class="btn gray" onclick="closeModal('schedulePreviewModal')">Đóng</button></div><div style="overflow:auto;max-height:60vh;border:1px solid #dbe3ea;border-radius:8px"><table style="display:table;min-width:760px;width:100%;border-collapse:collapse"><thead><tr><th>STT</th><th>Ngày tái khám</th><th>Họ và tên</th><th>Năm sinh</th><th>Nhà</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${previewRows||'<tr><td colspan="7" style="text-align:center;padding:20px">Không có lịch tái khám phù hợp với bộ lọc.</td></tr>'}</tbody></table></div></div>`;
+   modal.innerHTML=`<div class="box" style="width:min(1200px,100%);max-height:94vh"><button class="close" type="button" onclick="closeModal('schedulePreviewModal')">×</button><h2>👁 Xem trước báo cáo lịch tái khám</h2><p><b>${escH(label)}</b> · Ngày lọc: ${selectedDate?escH(formatDateVN(selectedDate)):'Tất cả ngày'} · ${rows.length} lượt tái khám</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><button type="button" class="btn green" onclick="exportSchedule('${scope}','${String(id).replace(/'/g,"\\'")}','csv','download')">⬇ Xuất file Excel</button><button type="button" class="btn blue" onclick="exportSchedule('${scope}','${String(id).replace(/'/g,"\\'")}','pdf','print')">🖨 In / Lưu PDF</button><button type="button" class="btn gray" onclick="closeModal('schedulePreviewModal')">Đóng</button></div><div style="overflow:auto;max-height:60vh;border:1px solid #dbe3ea;border-radius:8px"><table style="display:table;min-width:760px;width:100%;border-collapse:collapse"><thead><tr><th>STT</th><th>Ngày tái khám</th><th>Họ và tên</th><th>Năm sinh</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${previewRows||'<tr><td colspan="7" style="text-align:center;padding:20px">Không có lịch tái khám phù hợp với bộ lọc.</td></tr>'}</tbody></table></div></div>`;
    openModal('schedulePreviewModal');return;
  }
  if(format==='csv' && action==='download'){
   const excelRows=[['LỊCH TÁI KHÁM — '+label],['Ngày xuất',new Date().toLocaleDateString('vi-VN')],['Ngày lọc',selectedDate?formatDateVN(selectedDate):'Tất cả ngày'],[],['Ngày tái khám','Họ và tên','Năm sinh','Nhà','Tình trạng','Ghi chú'],...rows.map(r=>[formatDateVN(r.ngay),r.ten,r.namsinh,r.nha,r.tinhTrang,r.ghiChu])];
   downloadFormattedExcel('Lich_kham_'+label.replace(/[^a-zA-Z0-9À-ỹ]+/g,'_')+'.xls',excelRows);return;
  }
- const report=`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Lịch khám ${escH(label)}</title><style>body{font-family:Arial,sans-serif;margin:18mm;color:#222}h2{text-align:center}p{text-align:center}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #555;padding:7px;text-align:left}th{background:#e8eef7}@media print{body{margin:12mm}}</style></head><body><h2>LỊCH TÁI KHÁM – ${escH(label)}</h2><p>Ngày xuất: ${new Date().toLocaleDateString('vi-VN')} — Ngày lọc: ${selectedDate?escH(formatDateVN(selectedDate)):'Tất cả ngày'}</p><table><thead><tr><th>STT</th><th>Ngày khám</th><th>Họ và tên</th><th>Năm sinh</th><th>Nhà</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escH(formatDateVN(r.ngay))}</td><td>${escH(r.ten)}</td><td>${escH(r.namsinh||'—')}</td><td>${escH(r.nha)}</td><td>${escH(r.tinhTrang)}</td><td>${escH(r.ghiChu)}</td></tr>`).join('')}</tbody></table><p style="margin-top:35px;text-align:right">Người lập: ................................</p></body></html>`;
+ const report=`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Lịch khám ${escH(label)}</title><style>body{font-family:Arial,sans-serif;margin:18mm;color:#222}h2{text-align:center}p{text-align:center}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #555;padding:7px;text-align:left}th{background:#e8eef7}@media print{body{margin:12mm}}</style></head><body><h2>LỊCH TÁI KHÁM – ${escH(label)}</h2><p>Ngày xuất: ${new Date().toLocaleDateString('vi-VN')} — Ngày lọc: ${selectedDate?escH(formatDateVN(selectedDate)):'Tất cả ngày'}</p><table><thead><tr><th>STT</th><th>Ngày khám</th><th>Họ và tên</th><th>Năm sinh</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escH(formatDateVN(r.ngay))}</td><td>${escH(r.ten)}</td><td>${escH(r.namsinh||'—')}</td><td>${escH(r.nha)}</td><td>${escH(r.tinhTrang)}</td><td>${escH(r.ghiChu)}</td></tr>`).join('')}</tbody></table><p style="margin-top:35px;text-align:right">Người lập: ................................</p></body></html>`;
  closeModal('schedulePreviewModal');showReportInApp(report,'Báo cáo lịch tái khám');
 }
 function exportCensusHouseCsv(n){
@@ -2248,7 +2294,7 @@ function todayLocalKey(){const d=new Date();return d.getFullYear()+'-'+String(d.
 function readMeal(){try{const item=JSON.parse(localStorage.getItem(MEAL_STORAGE_KEY)||'null');if(!item||item.date!==todayLocalKey()){if(item)localStorage.removeItem(MEAL_STORAGE_KEY);return null}return item}catch(e){return null}}
 function renderMeal(){const item=readMeal();const dateLabel=$('mealDateLabel'),info=$('mealCurrentInfo'),notice=$('mealUpdateNotice');if(dateLabel)dateLabel.textContent='Ngày '+new Date().toLocaleDateString('vi-VN')+' · Chỉ hiển thị trong ngày hiện tại';if(!info)return;if(!item){info.textContent='Chưa có thực đơn hôm nay.';if(notice)notice.style.display='none';return}info.innerHTML='Đã tải lên: '+esc(item.name||'Thực đơn')+' <span style="font-weight:400">('+esc(item.sizeLabel||'file')+')</span>';if(notice){notice.innerHTML='📢 Thực đơn hôm nay đã được cập nhật!<small>'+esc(item.name||'Thực đơn')+' · Thời gian cập nhật: '+esc(item.uploadedAt||'')+'</small>';notice.style.display='block'}}
 window.addEventListener('storage',function(e){if(e.key===MEAL_STORAGE_KEY){renderMeal();}});
-function openMealModal(){renderMeal();$('mealUploadArea').style.display='none';$('mealViewerActions').style.display='flex';const uploadBtn=$('mealViewerActions')?.querySelector('button[onclick="openMealUpload()"]');if(uploadBtn)uploadBtn.style.display=canUploadMeal()?'':'none';const item=readMeal();const viewer=$('mealViewer');if(!item){viewer.innerHTML=''}else{const isImage=/^image\//.test(item.type||'');const isPdf=/pdf/i.test(item.type||'')||/\.pdf$/i.test(item.name||'');viewer.innerHTML='<div><b>'+esc(item.name)+'</b>'+(isImage?'<div style="margin-top:10px"><img class="meal-preview" src="'+item.data+'" alt="Thực đơn hôm nay"></div>':(isPdf?'<div style="margin-top:10px;height:76vh"><iframe title="Xem thực đơn hôm nay" src="'+item.data+'" style="width:100%;height:100%;border:1px solid #d8e5dc;border-radius:8px;background:white"></iframe></div>':'<div style="margin-top:10px" class="notice">Nhấn “Mở file thực đơn” để xem nội dung đầy đủ.</div>'))+'</div>';if(!isImage&&!isPdf){$('mealViewerActions').insertAdjacentHTML('afterbegin','<button type="button" class="btn blue" onclick="openMealFile()">Mở file thực đơn</button>')}}openModal('mealModal')}
+function openMealModal(){renderMeal();$('mealUploadArea').style.display='none';$('mealViewerActions').style.display='flex';const uploadBtn=$('mealViewerActions')?.querySelector('button[onclick="openMealUpload()"]');if(uploadBtn)uploadBtn.style.display=canUploadMeal()?'':'none';const item=readMeal();const viewer=$('mealViewer');if(!item){viewer.innerHTML=''}else{const isImage=/^image\//.test(item.type||'');const isPdf=/pdf/i.test(item.type||'')||/\.pdf$/i.test(item.name||'');viewer.innerHTML='<div><b>'+esc(item.name)+'</b>'+(isImage?'<div style="margin-top:10px"><img class="meal-preview" src="'+item.data+'" alt="Thực đơn hôm nay" title="Chạm để phóng to toàn màn hình" onclick="openPhotoZoom(this.src)"></div>':(isPdf?'<div style="margin-top:10px;height:76vh"><iframe title="Xem thực đơn hôm nay" src="'+item.data+'" style="width:100%;height:100%;border:1px solid #d8e5dc;border-radius:8px;background:white"></iframe></div>':'<div style="margin-top:10px" class="notice">Nhấn “Mở file thực đơn” để xem nội dung đầy đủ.</div>'))+'</div>';if(!isImage&&!isPdf){$('mealViewerActions').insertAdjacentHTML('afterbegin','<button type="button" class="btn blue" onclick="openMealFile()">Mở file thực đơn</button>')}}openModal('mealModal')}
 function openMealUpload(){if(!canUploadMeal()){alert('Chỉ ADMIN hoặc tài khoản Thực đơn được cấp mới có quyền tải thực đơn lên.');return}openMealModal();$('mealUploadArea').style.display='block';$('mealViewerActions').style.display='none'}
 function saveMealFile(){if(!canUploadMeal()){alert('Bạn không được cấp quyền tải thực đơn lên.');return}const file=$('mealFile').files[0];if(!file){alert('Vui lòng chọn file thực đơn.');return}if(file.size>4*1024*1024){alert('File lớn hơn 4 MB. Vui lòng chọn file nhỏ hơn để lưu trên trình duyệt.');return}const reader=new FileReader();reader.onload=()=>{try{const item={date:todayLocalKey(),name:file.name,type:file.type||'application/octet-stream',sizeLabel:(file.size/1024).toFixed(0)+' KB',uploadedAt:new Date().toLocaleString('vi-VN'),data:reader.result};localStorage.setItem(MEAL_STORAGE_KEY,JSON.stringify(item));$('mealFile').value='';renderMeal();openMealModal();alert('Đã cập nhật thực đơn hôm nay trên thiết bị này. Thông báo cập nhật đã hiển thị trên giao diện phần mềm. Lưu ý: thiết bị khác chưa nhận được thông báo nếu chưa dùng kho lưu trữ chung.')}catch(err){alert('Không lưu được file trên trình duyệt. Vui lòng chọn file nhỏ hơn.')}};reader.readAsDataURL(file)}
 function openMealFile(){const item=readMeal();if(!item)return;const a=document.createElement('a');a.href=item.data;a.download=item.name||'thuc_don_hom_nay';a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove()}
