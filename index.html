@@ -114,7 +114,7 @@ body.meal-only-authenticated #authGate{display:none!important}
 #mealOnlyBar{display:none;position:fixed;inset:0 0 auto 0;z-index:10004;background:#eaf8ef;border-bottom:1px solid #9bd4aa;padding:14px 18px;align-items:center;justify-content:space-between;gap:12px}
 body.meal-only-authenticated #mealOnlyBar{display:flex}
 @media(max-width:600px){#mealOnlyBar{flex-wrap:wrap}}
-.auth-gate-card{width:min(440px,100%);background:#fff;border:1px solid #d7e2eb;border-radius:16px;padding:26px;box-shadow:0 12px 36px #1f34451a;text-align:center}
+.auth-gate-card{width:min(380px,100%);background:#fff;border:1px solid #d7e2eb;border-radius:16px;padding:24px;box-shadow:0 12px 36px #1f34451a;text-align:center}
 .auth-gate-card h2{margin:0 0 10px;color:#2c3e50}
 .auth-gate-card p{color:#526170;line-height:1.55}
 </style>
@@ -125,9 +125,7 @@ body.meal-only-authenticated #mealOnlyBar{display:flex}
     <div style="font-size:42px;margin-bottom:8px">🔐</div>
     <h2 id="authGateTitle">Đăng nhập để sử dụng phần mềm</h2>
     <p>Vui lòng đăng nhập bằng tài khoản được cấp. Nội dung bên trong chỉ hiển thị sau khi đăng nhập.</p>
-    <button type="button" class="btn green" style="min-width:180px;min-height:46px" onclick="openLogin()">Đăng nhập hệ thống</button>
-    <button type="button" class="btn blue" style="display:block;margin:10px auto 0;min-width:220px;min-height:44px" onclick="openMealModal()">🍲 Xem thực đơn hôm nay (không cần đăng nhập)</button>
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e1e8ee"><p style="margin:0 0 9px;font-weight:700">Dành riêng cho người cập nhật thực đơn</p><button type="button" class="btn blue" style="min-width:220px;min-height:44px" onclick="openMealAccountLogin()">🍲 Đăng nhập tài khoản Thực đơn</button></div>
+    <button type="button" class="btn green" style="min-width:200px;min-height:46px" onclick="openLogin()">Đăng nhập hệ thống</button>
   </div>
 </div>
 <div id="mealOnlyBar"><strong>🍲 KHU VỰC CẬP NHẬT THỰC ĐƠN</strong><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn green" onclick="openMealUpload()">＋ Tải thực đơn lên</button><button type="button" class="btn red" onclick="logoutMealOnly()">Đăng xuất</button></div></div>
@@ -239,8 +237,11 @@ body.meal-only-authenticated #mealOnlyBar{display:flex}
 <div id="loginModal" class="modal">
 <div class="box" style="max-width:430px">
 <button class="close" onclick="closeModal('loginModal')">×</button>
-<h2>☰ Menu</h2>
-<div style="margin:12px 0 16px"><button type="button" class="btn green" style="width:100%;min-height:46px" onclick="openMealModal()">🍲 Thực đơn hôm nay</button></div>
+<h2>☰ Đăng nhập hệ thống</h2>
+<div style="display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0 16px;padding:12px;background:#f5f9fc;border:1px solid #dbe6ee;border-radius:10px">
+  <button type="button" class="btn blue" style="width:100%;min-height:42px" onclick="openMealModal()">🍲 Xem thực đơn hôm nay</button>
+  <button type="button" class="btn blue" style="width:100%;min-height:42px" onclick="openMealAccountLogin()">🍲 Đăng nhập tài khoản Thực đơn</button>
+</div>
   <div style="margin:0 0 16px"><button type="button" class="btn blue" style="width:100%;min-height:46px" onclick="closeModal('loginModal');openDailyReport()">📋 Diễn biến hằng ngày</button></div>
   <div style="margin:0 0 16px"><button type="button" class="btn green" id="openDutyPanelBtn" style="width:100%;min-height:46px" onclick="closeModal('loginModal');toggleDutyPanel(true)">👥 Cán bộ quản lý nhà hôm nay</button></div>
 <p class="notice">Tài khoản này dùng để thêm, sửa và xóa hồ sơ. Nhân viên bình thường không cần đăng nhập.</p>
@@ -746,11 +747,17 @@ async function login(e){
     localStorage.setItem(SESSION_KEY,JSON.stringify(managerSession));
     closeModal('loginModal'); $('loginPassword').value=''; $('loginUsername').value='';
     if(wanted==='meal'){document.body.classList.add('meal-only-authenticated');document.body.classList.remove('authenticated');renderMeal();openMealUpload();return;}
-    document.body.classList.remove('meal-only-authenticated');await activateAuthenticatedApp();
-    alert('Đăng nhập thành công.');
+    document.body.classList.remove('meal-only-authenticated');
+    // Không chờ tải toàn bộ hồ sơ/lịch sử mới báo đăng nhập thành công.
+    // Trang chủ được hiển thị ngay; dữ liệu tiếp tục tải nền.
+    activateAuthenticatedApp().catch(err=>{console.error('Lỗi khởi tạo trang sau đăng nhập:',err);showCloudError(err)});
+    alert('Đăng nhập thành công. Trang chủ đang tải dữ liệu; vui lòng chờ trong giây lát.');
   }catch(err){console.error(err);alert('Đăng nhập thất bại.\n\n'+(err.message||'Kiểm tra tài khoản, mật khẩu và quyền được cấp trong Supabase.'))}
 }
 function logout(){
+  // Giữ cache hồ sơ theo từng user trong sessionStorage của tab để lần đăng nhập kế tiếp
+  // có thể hiển thị ngay sau khi xác thực quyền; cache chỉ được đọc sau khi đăng nhập thành công.
+  // Không dùng cache để cấp quyền hoặc cho phép sửa/xóa khi chưa xác thực.
   managerSession=null;managerPermission=null;localStorage.removeItem(SESSION_KEY);
   people=[]; updateAuthUI();
   $('loginModal').querySelector('form').style.display='block';
@@ -784,16 +791,38 @@ function showCloudError(err){console.error(err);alert('Không thể thực hiệ
 
 async function loadPeople(){
   if(!(managerSession?.access_token && managerPermission && managerPermission.trang_thai===true)){people=[];return;}
+  // Sau khi xác thực và kiểm tra quyền, hiện bản dữ liệu đã đồng bộ lần trước từ localStorage ngay;
+  // luôn tải dữ liệu máy chủ ở nền để cập nhật. Cache được tách theo user ID, không thay thế xác thực/phân quyền.
+  const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
+  try{
+    let cached=localStorage.getItem(cacheKey);
+    // Di chuyển cache phiên cũ nếu có, để người dùng không phải chờ tải lại chỉ vì đổi phiên bản.
+    if(!cached){
+      const oldKey='btxh_people_cache_'+String(managerSession?.user?.id||'');
+      cached=sessionStorage.getItem(oldKey);
+      if(cached){try{localStorage.setItem(cacheKey,cached)}catch(_){} }
+    }
+    if(cached){
+      const parsed=JSON.parse(cached);
+      if(Array.isArray(parsed)){people=parsed;render();}
+    }
+  }catch(e){console.warn('Không đọc được dữ liệu lưu tạm:',e)}
   try{
     const r=await api('so_tay_suc_khoe?select=id,data,updated_at&order=updated_at.desc');
     if(!r.ok)throw new Error(await r.text());
     const rows=await r.json();
     people=rows.map(x=>Object.assign({id:x.id},x.data||{}));
-    // Tải tuần tự để giảm số truy vấn đồng thời sau đăng nhập; giữ hành vi bản gốc.
-    await loadDx();
-    await loadReviews();
+    try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không lưu được dữ liệu tạm:',e)}
     render();
-  }catch(e){showCloudError(e)}
+    Promise.allSettled([loadDx(),loadReviews()]).then(results=>{
+      const failed=results.find(x=>x.status==='rejected');
+      render();
+      if(failed)showCloudError(failed.reason);
+    });
+  }catch(e){
+    // Nếu mạng lỗi nhưng cache hợp lệ, giữ dữ liệu đã hiển thị và thông báo đồng bộ thất bại.
+    showCloudError(e);
+  }
 }
 async function loadDx(){
   const r=await api('kham_dot_xuat?select=id,person_id,date_time,reason,action,created_at&order=created_at.desc');
@@ -993,7 +1022,9 @@ function renderDailyReport(){
   const events=allDailyEvents().filter(e=>(e.date||localDateKey(e.dateTime))===date);
   const transfers=events.filter(e=>e.type==='transfer').length;
   const increaseEvents=events.filter(e=>e.type==='increase'||/tăng quân số|tiếp nhận|hồ sơ mới/i.test((e.title||'')+' '+(e.reason||'')));
-  const active=scopePeople.filter(isCurrentlyManaged);
+  // Xác định phạm vi ngay trong báo cáo; scopePeople chỉ là biến cục bộ của renderDashboard.
+  const reportPeople=isViewer()?people.filter(canViewPerson):people;
+  const active=reportPeople.filter(isCurrentlyManaged);
   const getZoneForHouse=n=>{const x=Number(String(n||'').replace(/\D/g,''));if(x>=1&&x<=4)return 'I';if(x>=5&&x<=9)return 'II';if(x>=10&&x<=11)return 'III';return '';};
   const hospitalPeople=active.filter(p=>currentLocation(p)==='Bệnh viện');
   const present=active.filter(p=>currentLocation(p)!=='Bệnh viện');
@@ -1011,7 +1042,7 @@ function renderDailyReport(){
   const statusEvents=events.filter(e=>e.type==='decrease'||/hồi gia|tử vong|chuyển đi/i.test((e.title||'')+' '+(e.to||'')));
   const fmt=v=>{if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?String(v):d.toLocaleString('vi-VN',{dateStyle:'short',timeStyle:'short'});};
   // Bảng quân số theo mẫu người dùng cung cấp; thống kê hồ sơ hiện có.
-  const allPeople=people.slice();
+  const allPeople=reportPeople.slice();
   const presentForCensus=present;
   const ageOver60=p=>!!p.namsinh&&(currentYear-Number(p.namsinh)>60);
   const genderCount=(list,g)=>list.filter(p=>p.gioitinh===g).length;
@@ -1230,8 +1261,7 @@ async function savePerson(e){
     const savedIndex=people.findIndex(x=>String(x.id)===String(p.id));
     if(savedIndex>=0)people[savedIndex]=p;else people.unshift(p);
     closeModal('personModal');
-    render();
-    // Người dùng bấm OK thì lập tức quay về trang đã mở form sửa.
+    // Không render về giao diện chung trước khi hiện thông báo; restore sẽ render và khôi phục đúng trang cũ.
     alert('Lưu thành công.');
     restorePersonEditReturnState();
     if(returnDetailId&&people.some(x=>String(x.id)===String(returnDetailId)))viewPerson(returnDetailId);
@@ -1525,11 +1555,13 @@ async function saveDxForm(e){
  try{
    let r;
    if(editId){r=await api('kham_dot_xuat?id=eq.'+encodeURIComponent(editId),{method:'PATCH',headers:headers({'Prefer':'return=minimal'}),body:JSON.stringify({date_time:dateTime,reason,action})});}
-   else{r=await api('kham_dot_xuat',{method:'POST',headers:headers({'Prefer':'return=minimal'}),body:JSON.stringify({person_id:id,date_time:dateTime,reason,action})});}
+   else{r=await api('kham_dot_xuat',{method:'POST',headers:headers({'Prefer':'return=representation','Content-Type':'application/json'}),body:JSON.stringify({person_id:id,date_time:dateTime,reason,action})});}
    if(!r.ok)throw new Error(await r.text());
-   // Không ghi lại bảng hồ sơ chính khi lưu khám: tài khoản chưa đăng nhập chỉ được INSERT lượt khám,
-   // tuyệt đối không được sửa dữ liệu hồ sơ. Vị trí hiện tại được suy ra từ lượt khám mới nhất khi hiển thị.
-   closeModal('dxFormModal');await loadPeople();viewPerson(id);alert(editId?'Đã cập nhật lượt khám.':'Đã lưu lượt khám. Vị trí Phòng Y tế/Khu được cập nhật theo lượt khám mới nhất.');
+   // Cập nhật tại bộ nhớ sau khi máy chủ xác nhận, không tải lại toàn bộ lịch sử khám.
+   p.khamDotXuat=Array.isArray(p.khamDotXuat)?p.khamDotXuat:[];
+   if(editId){const item=p.khamDotXuat.find(x=>String(x.id)===String(editId));if(item){item.dateTime=dateTime;item.reason=reason;item.action=action;}}
+   else{const savedRows=await r.json();const saved=savedRows?.[0];p.khamDotXuat.unshift({id:saved?.id||('local-'+Date.now()),dateTime:saved?.date_time||dateTime,reason:saved?.reason||reason,action:saved?.action||action,created_at:saved?.created_at||new Date().toISOString()});}
+   closeModal('dxFormModal');render();viewPerson(id);alert(editId?'Đã cập nhật lượt khám.':'Đã lưu lượt khám. Vị trí Phòng Y tế/Khu được cập nhật theo lượt khám mới nhất.');
  }catch(err){showCloudError(err)}
 }
 async function deleteDx(dxId,personId=''){
@@ -1540,7 +1572,7 @@ async function deleteDx(dxId,personId=''){
  try{
    const r=await api('kham_dot_xuat?id=eq.'+encodeURIComponent(dxId),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
    if(!r.ok)throw new Error(await r.text());
-   await loadPeople();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
+   await loadDx();render();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
    alert('Đã xóa lượt khám đột xuất.');
  }catch(err){personEditReturnState=null;showCloudError(err)}
 }
@@ -1657,7 +1689,7 @@ function renderCensusDailyEvents(scope,key,date){
 function showCensusDailyEvents(scope,key){renderCensusDailyEvents(scope,key,localDateKey());}
 
 function censusStatsHtml(list,n,zoneKey=''){const active=list.filter(p=>isCurrentlyManaged(p));const scope=zoneKey?'zone':'house';const scopeValue=zoneKey||n;const tile=(label,count,key)=>`<button type="button" class="census-mini" style="border:0;cursor:pointer;font:inherit" onclick="${zoneKey?`filterCensusZone('${zoneKey}','${key}')`:`filterCensusHouse(${n},'${key}')`}"><span>${label}</span><b>${count}</b></button>`;return `<div class="census-stats">${tile('Tổng đang quản lý',active.length,'all')}${tile('Nam',active.filter(p=>p.gioitinh==='Nam').length,'male')}${tile('Nữ',active.filter(p=>p.gioitinh==='Nữ').length,'female')}${tile('Trên 60 tuổi',active.filter(p=>censusAge(p)>60).length,'over60')}${tile('Dưới 60 tuổi',active.filter(p=>censusAge(p)!==null&&censusAge(p)<60).length,'under60')}${tile('Khuyết tật',active.filter(p=>p.khuyettat==='Có').length,'disabled')}<button type="button" class="census-mini" style="border:0;cursor:pointer;font:inherit" onclick="showCensusDailyEvents('${scope}','${scopeValue}')"><span>Ghi nhận diễn biến trong ngày</span><b>${countCensusDailyEvents(scope,scopeValue)}</b></button>${tile('Tâm thần',active.filter(p=>p.thuocTT).length,'mental')}${tile('Lịch tái khám hôm nay',reviewCountToday(active),'review')}</div>`;}
-function censusPeopleHtml(list){return list.length?list.map(p=>{const today=localDateKeyReview();const todayReviews=personReviewHistory(p).filter(item=>String(item.date||'').slice(0,10)===today);const reviewText=todayReviews.length?todayReviews.map(item=>formatDateVN(String(item.date||'').slice(0,10))).join(', '):formatDateVN(p.ngayTaiKham)||'Chưa có lịch';return `<div class="census-person"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')}<br><span>Giới tính: ${esc(p.gioitinh||'Chưa cập nhật')} · Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')}</span><br><span>Trạng thái: ${esc(p.trangthai||'Đang quản lý')} · Khám đột xuất: ${(p.khamDotXuat||[]).length} lượt</span><br><span><b>Lịch tái khám:</b> ${esc(reviewText)}</span><br><button class="btn blue" onclick="viewPerson('${p.id}')">Xem hồ sơ</button> <button class="btn purple" onclick="openTransfer('${p.id}')">↔ Chuyển vị trí</button>${isAdmin()?` <button class="btn red" onclick="delPerson('${p.id}')">Xóa</button>`:''}</div>`}).join(''):'<div class="notice">Chưa có đối tượng tại vị trí này.</div>';}
+function censusPeopleHtml(list){return list.length?list.map(p=>{const today=localDateKeyReview();const todayReviews=personReviewHistory(p).filter(item=>String(item.date||'').slice(0,10)===today);const reviewText=todayReviews.length?todayReviews.map(item=>formatDateVN(String(item.date||'').slice(0,10))).join(', '):formatDateVN(p.ngayTaiKham)||'Chưa có lịch';const reviewActions=isAdmin()?todayReviews.map((item,n)=>item.id!==undefined&&item.id!==null&&String(item.id).trim()!==''?`<div style="margin:5px 0 5px 10px"><span>Lượt ${n+1} (${esc(formatDateVN(String(item.date||'').slice(0,10)))}):</span> <button type="button" class="btn blue" onclick="editPersonReview('${String(p.id).replace(/'/g,"\\'")}','${String(item.id).replace(/'/g,"\\'")}',${Number(String(p.nha||'').replace(/\\D/g,''))||0})">✎ Sửa lượt khám</button> <button type="button" class="btn red" onclick="deletePersonReview('${String(p.id).replace(/'/g,"\\'")}','${String(item.id).replace(/'/g,"\\'")}',${Number(String(p.nha||'').replace(/\\D/g,''))||0})">🗑 Xóa lượt khám</button></div>`:'').join(''):'';return `<div class="census-person"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')}<br><span>Giới tính: ${esc(p.gioitinh||'Chưa cập nhật')} · Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')}</span><br><span>Trạng thái: ${esc(p.trangthai||'Đang quản lý')} · Khám đột xuất: ${(p.khamDotXuat||[]).length} lượt</span><br><span><b>Lịch tái khám hôm nay:</b> ${esc(reviewText)}</span>${reviewActions?`<br>${reviewActions}`:''}<br><button class="btn blue" onclick="viewPerson('${String(p.id).replace(/'/g,"\\'")}')">Xem hồ sơ</button> <button class="btn purple" onclick="openTransfer('${String(p.id).replace(/'/g,"\\'")}')">↔ Chuyển vị trí</button>${isAdmin()?` <button class="btn red" onclick="delPerson('${String(p.id).replace(/'/g,"\\'")}')">Xóa hồ sơ</button>`:''}</div>`}).join(''):'<div class="notice">Chưa có đối tượng tại vị trí này.</div>';}
 let censusHouseFilter='all';
 let censusHouseListVisible=false;
 let censusDxSearchOpen=false;
@@ -1735,7 +1767,7 @@ function showHouseReviewPanel(n, query='', period='all', showList=false, selecte
       <button type="button" class="btn green" onclick="exportSchedule('house',${n},'csv')">Xuất Nhà — Excel</button>
       <button type="button" class="btn blue" onclick="exportSchedule('house',${n},'pdf')">Xuất Nhà — PDF / In</button>
     </div>
-    ${showList?`<div style="margin-top:12px;padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff"><h4 style="margin:0 0 10px">📋 Danh sách tái khám ${selectedDate?'ngày '+esc(formatDateVN(selectedDate)):period==='today'?'hôm nay':periodLabel}</h4>${filteredList.length?filteredList.map(p=>p._reviewHistory.map(item=>`<div class="census-person"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')}<br><span>Ngày tái khám: ${esc(formatDateVN(String(item.date||'').slice(0,10)))}</span>${item.note?`<br><span>Ghi chú: ${esc(item.note)}</span>`:''}<br><button type="button" class="btn blue" onclick="viewPerson('${String(p.id).replace(/'/g,"\'")}')">Xem hồ sơ</button></div>`).join('')).join(''):`<div class="notice">Không có lịch tái khám ${selectedDate?'trong ngày đã chọn':period==='today'?'hôm nay':'trong khoảng thời gian này'} tại ${house}.</div>`}</div>`:''}
+    ${showList?`<div style="margin-top:12px;padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff"><h4 style="margin:0 0 10px">📋 Danh sách tái khám ${selectedDate?'ngày '+esc(formatDateVN(selectedDate)):period==='today'?'hôm nay':periodLabel}</h4>${filteredList.length?filteredList.map(p=>p._reviewHistory.map(item=>`<div class="census-person"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')}<br><span>Ngày tái khám: ${esc(formatDateVN(String(item.date||'').slice(0,10)))}</span>${item.note?`<br><span>Ghi chú: ${esc(item.note)}</span>`:''}${isAdmin()&&item.id!==undefined&&item.id!==null&&String(item.id).trim()!==''?`<br><button type="button" class="btn blue" data-person-id="${esc(String(p.id))}" data-review-id="${esc(String(item.id))}" onclick="window.editPersonReview(this.getAttribute('data-person-id'),this.getAttribute('data-review-id'),${n})">✎ Sửa lượt này</button> <button type="button" class="btn red" data-person-id="${esc(String(p.id))}" data-review-id="${esc(String(item.id))}" onclick="window.deletePersonReview(this.getAttribute('data-person-id'),this.getAttribute('data-review-id'),${n})">🗑 Xóa lượt này</button><div id="editReview_${String(item.id).replace(/[^a-zA-Z0-9_-]/g,'_')}"></div>`:''}<br><button type="button" class="btn blue" onclick="viewPerson('${String(p.id).replace(/'/g,"\'")}')">Xem hồ sơ</button></div>`).join('')).join(''):`<div class="notice">Không có lịch tái khám ${selectedDate?'trong ngày đã chọn':period==='today'?'hôm nay':'trong khoảng thời gian này'} tại ${house}.</div>`}</div>`:''}
   </div>`;
 }
 function renderHouseReviewQuickSearch(n, query){
@@ -1744,12 +1776,12 @@ function renderHouseReviewQuickSearch(n, query){
   if(!q){result.innerHTML='Nhập tên hoặc mã đối tượng, sau đó chọn người cần thêm lịch tái khám.';return;}
   const house='Nhà '+n;
   const matches=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house&&(String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q))).slice(0,12);
-  result.innerHTML=matches.length?matches.map(p=>`<div class="census-person" style="margin:6px 0"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')} · Nhà: ${esc(p.nha||'')}<br><span>Lịch đã ghi nhận: ${personReviewHistory(p).length} lượt</span><br><button class="btn green" type="button" onclick="showHouseQuickReviewForm(${n},'${String(p.id).replace(/'/g,"\'")}')">Chọn và thêm lượt khám</button></div>`).join(''):'Không tìm thấy đối tượng đang ở '+house+'. Kiểm tra lại tên hoặc mã.';
+  result.innerHTML=matches.length?matches.map(p=>`<div class="census-person" style="margin:6px 0"><b>${esc(p.ten||'')}</b> — Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')} · Nhà: ${esc(p.nha||'')} · <br><button class="btn green" type="button" onclick="showHouseQuickReviewForm(${n},'${String(p.id).replace(/'/g,"\'")}')">Chọn và thêm lượt khám</button></div>`).join(''):'Không tìm thấy đối tượng đang ở '+house+'. Kiểm tra lại tên hoặc mã.';
 }
 function showHouseQuickReviewForm(n,id){
   const p=people.find(x=>String(x.id)===String(id));const host=$('houseReviewQuickForm');if(!p||!host)return;
   if(isManager()&&!canManagePerson(p)){alert('Bạn không có quyền nhập lịch tái khám ngoài phạm vi được giao.');return;}
-  host.innerHTML=`<div class="census-panel" style="margin-top:8px;padding:12px"><b>📅 Thêm lượt tái khám: ${esc(p.ten||'')}</b><div>Mã đối tượng: ${esc(p.ma||'')} · Lượt đã ghi nhận: ${personReviewHistory(p).length}</div><form onsubmit="savePersonReview(event,${n},'${String(p.id).replace(/'/g,"\'")}')" style="margin-top:8px"><div class="field"><label>Ngày khám *</label><input name="reviewDate" type="date" required></div><div class="field" style="margin-top:8px"><label>Tình trạng khám *</label><select name="reviewStatus" required style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px"><option value="Theo lịch">Khám theo lịch</option><option value="Đăng ký">Đăng ký khám</option></select></div><div class="field" style="margin-top:8px"><label>Ghi chú (không bắt buộc)</label><input name="reviewNote" placeholder="Nhập ghi chú nếu có"></div><div class="actions"><button class="btn gray" type="button" onclick="$('houseReviewQuickForm').innerHTML=''">Hủy</button><button class="btn green" type="submit">＋ Lưu lượt khám</button></div></form></div>`;
+  host.innerHTML=`<div class="census-panel" style="margin-top:8px;padding:12px"><b>📅 Thêm lượt tái khám: ${esc(p.ten||'')}</b><div>Mã đối tượng: ${esc(p.ma||'')}</div><form onsubmit="savePersonReview(event,${n},'${String(p.id).replace(/'/g,"\'")}')" style="margin-top:8px"><div class="field"><label>Ngày khám *</label><input name="reviewDate" type="date" required></div><div class="field" style="margin-top:8px"><label>Tình trạng khám *</label><select name="reviewStatus" required style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px"><option value="Theo lịch">Khám theo lịch</option><option value="Đăng ký">Đăng ký khám</option></select></div><div class="field" style="margin-top:8px"><label>Ghi chú (không bắt buộc)</label><input name="reviewNote" placeholder="Nhập ghi chú nếu có"></div><div class="actions"><button class="btn gray" type="button" onclick="$('houseReviewQuickForm').innerHTML=''">Hủy</button><button class="btn green" type="submit">＋ Lưu lượt khám</button></div></form></div>`;
   host.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
@@ -1767,9 +1799,52 @@ function togglePersonReviewHistory(id,n){
   const p=people.find(x=>String(x.id)===String(id));const host=$('reviewHistory_'+id);if(!p||!host)return;
   if(host.dataset.open==='1'){host.innerHTML='';host.dataset.open='0';return;}
   const history=personReviewHistory(p);
-  host.innerHTML=history.length?`<div class="dx-list">${history.map((item,i)=>`<div class="dx-item"><b>${esc(formatDateVN(item.date||''))}</b>${item.note?`<br>${esc(item.note)}`:''}${item.createdAt?`<br><small>Ngày nhập: ${esc(new Date(item.createdAt).toLocaleString('vi-VN'))}</small>`:''}${isAdmin()&&item.id&&/^\d+$/.test(String(item.id))?`<br><button class="btn red" onclick="deletePersonReview('${String(p.id).replace(/'/g,"\'")}','${String(item.id).replace(/'/g,"\'")}',${n})">Xóa lượt này</button>`:''}</div>`).join('')}</div>`:'<div class="notice">Chưa có lịch sử tái khám.</div>';
+  host.innerHTML=history.length?`<div class="dx-list">${history.map((item,i)=>`<div class="dx-item"><b>${esc(formatDateVN(item.date||''))}</b>${item.note?`<br>${esc(item.note)}`:''}${item.createdAt?`<br><small>Ngày nhập: ${esc(new Date(item.createdAt).toLocaleString('vi-VN'))}</small>`:''}${isAdmin()&&item.id!==undefined&&item.id!==null&&String(item.id).trim()!==''?`<br><button class="btn blue" type="button" data-person-id="${esc(String(p.id))}" data-review-id="${esc(String(item.id))}" onclick="window.editPersonReview(this.getAttribute('data-person-id'),this.getAttribute('data-review-id'),${n})">✎ Sửa lượt này</button> <button class="btn red" type="button" data-person-id="${esc(String(p.id))}" data-review-id="${esc(String(item.id))}" onclick="window.deletePersonReview(this.getAttribute('data-person-id'),this.getAttribute('data-review-id'),${n})">Xóa lượt này</button><div id="editReview_${String(item.id).replace(/[^a-zA-Z0-9_-]/g,'_')}"></div>`:''}</div>`).join('')}</div>`:'<div class="notice">Chưa có lịch sử tái khám.</div>';
   host.dataset.open='1';
 }
+function editPersonReview(personId,reviewId,n){
+  if(!isAdmin()){alert('Chỉ ADMIN mới được sửa lịch tái khám.');return;}
+  const p=people.find(x=>String(x.id)===String(personId));
+  if(!p){alert('Không tìm thấy hồ sơ đối tượng. Vui lòng tải lại lịch tái khám.');return;}
+  const items=Array.isArray(p.lichTaiKham)?p.lichTaiKham:[];
+  const item=items.find(x=>String(x.id)===String(reviewId));
+  if(!item){alert('Không tìm thấy lượt tái khám cần sửa. Vui lòng đóng lịch tái khám, mở lại và thử lần nữa.');return;}
+  const safeId=String(reviewId).replace(/[^a-zA-Z0-9_-]/g,'_');
+  let host=document.getElementById('editReview_'+safeId);
+  if(!host){
+    // Tạo vùng sửa ngay bên dưới nút được bấm nếu giao diện đã được dựng lại.
+    const buttons=[...document.querySelectorAll('[data-review-id]')];
+    const button=buttons.find(b=>String(b.getAttribute('data-review-id'))===String(reviewId)&&String(b.getAttribute('data-person-id'))===String(personId));
+    if(button){
+      host=document.createElement('div');host.id='editReview_'+safeId;
+      button.parentElement.appendChild(host);
+    }
+  }
+  if(!host){alert('Không mở được khung chỉnh sửa. Vui lòng đóng bảng lịch tái khám rồi mở lại.');return;}
+  const note=String(item.note||'');
+  const match=note.match(/^\[(Theo lịch|Đăng ký)\]\s*/);
+  const status=match?match[1]:'Theo lịch';
+  const userNote=match?note.slice(match[0].length):note;
+  host.innerHTML=`<form onsubmit="window.updatePersonReview(event,'${String(personId).replace(/'/g,"\\'")}','${String(reviewId).replace(/'/g,"\\'")}',${Number(n)||0})" style="margin-top:8px;padding:10px;border:1px solid #93c5fd;border-radius:8px;background:#f8fbff"><b>Chỉnh sửa lượt tái khám</b><div class="field" style="margin-top:8px"><label>Ngày khám *</label><input name="reviewDate" type="date" value="${esc(String(item.date||'').slice(0,10))}" required></div><div class="field" style="margin-top:8px"><label>Tình trạng khám *</label><select name="reviewStatus" required style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px"><option value="Theo lịch" ${status==='Theo lịch'?'selected':''}>Khám theo lịch</option><option value="Đăng ký" ${status==='Đăng ký'?'selected':''}>Đăng ký khám</option></select></div><div class="field" style="margin-top:8px"><label>Ghi chú</label><input name="reviewNote" value="${esc(userNote)}" placeholder="Nhập ghi chú nếu có"></div><div class="actions"><button class="btn gray" type="button" onclick="document.getElementById('editReview_${safeId}').innerHTML=''">Hủy</button><button class="btn blue" type="submit">Lưu chỉnh sửa</button></div></form>`;
+  host.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+async function updatePersonReview(e,personId,reviewId,n){
+  e.preventDefault();if(!isAdmin()){alert('Chỉ ADMIN mới được sửa lịch tái khám.');return;}
+  const form=e.target;const date=form.elements.reviewDate?.value;const status=form.elements.reviewStatus?.value;const userNote=(form.elements.reviewNote?.value||'').trim();
+  if(!date||!status){alert('Vui lòng nhập ngày khám và tình trạng khám.');return;}
+  const note='['+status+']'+(userNote?' '+userNote:'');const query=$('censusContent').querySelector('.house-search')?.value||'';
+  rememberPersonEditReturnState();
+  try{
+    const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId),{method:'PATCH',headers:headers({'Prefer':'return=minimal','Content-Type':'application/json'}),body:JSON.stringify({review_date:date,note})});
+    if(!r.ok)throw new Error(await r.text());
+    const person=people.find(x=>String(x.id)===String(personId));
+    const review=person?.lichTaiKham?.find(x=>String(x.id)===String(reviewId));
+    if(review){review.date=date;review.note=note;}
+    renderCensusHouse(n,query);showHouseReviewPanel(n);personEditReturnState=null;
+    alert('Đã cập nhật lượt tái khám. Các lượt khác và hồ sơ đối tượng được giữ nguyên.');
+  }catch(err){personEditReturnState=null;showCloudError(err)}
+}
+
 async function savePersonReview(e,n,id){if(isViewer()){alert('Tài khoản người xem chỉ được xem.');return;}
   e.preventDefault();
   const p=people.find(x=>String(x.id)===String(id));if(!p)return;
@@ -1780,9 +1855,10 @@ async function savePersonReview(e,n,id){if(isViewer()){alert('Tài khoản ngư�
   if(!date){alert('Vui lòng nhập ngày khám.');return;}
   if(!status){alert('Vui lòng chọn tình trạng khám.');return;}
   try{
-    const r=await api('lich_tai_kham',{method:'POST',headers:headers({'Prefer':'return=minimal'}),body:JSON.stringify({person_id:String(p.id),review_date:date,note,created_by:managerSession?.user?.id||null})});
+    const r=await api('lich_tai_kham',{method:'POST',headers:headers({'Prefer':'return=representation','Content-Type':'application/json'}),body:JSON.stringify({person_id:String(p.id),review_date:date,note,created_by:managerSession?.user?.id||null})});
     if(!r.ok)throw new Error(await r.text());
-    await loadPeople();
+    const savedRows=await r.json();const saved=savedRows?.[0];
+    if(saved){p.lichTaiKham=Array.isArray(p.lichTaiKham)?p.lichTaiKham:[];p.lichTaiKham.unshift({id:saved.id,date:saved.review_date,note:saved.note||note,createdAt:saved.created_at||''});}
     renderCensusHouse(n,$('censusContent').querySelector('.house-search')?.value||'');
     showHouseReviewPanel(n);
     alert('Đã lưu lượt tái khám. Hồ sơ đối tượng chính không bị chỉnh sửa.');
@@ -1796,7 +1872,9 @@ async function deletePersonReview(id,reviewId,n){
   try{
     const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
     if(!r.ok)throw new Error(await r.text());
-    await loadPeople();renderCensusHouse(n,query);showHouseReviewPanel(n);personEditReturnState=null;
+    const person=people.find(x=>String(x.id)===String(id));
+    if(person)person.lichTaiKham=(person.lichTaiKham||[]).filter(x=>String(x.id)!==String(reviewId));
+    renderCensusHouse(n,query);showHouseReviewPanel(n);personEditReturnState=null;
     alert('Đã xóa lượt tái khám đã chọn.');
   }catch(err){personEditReturnState=null;showCloudError(err)}
 }
@@ -2456,6 +2534,11 @@ async function exportMoneyTemplate() {
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
   } catch(err) {console.error(err);alert('Chưa xuất được file Excel. Vui lòng thử lại hoặc gửi mình ảnh lỗi.');}
 }
+// Expose review actions explicitly for the inline buttons in the re-examination panel.
+window.editPersonReview = editPersonReview;
+window.updatePersonReview = updatePersonReview;
+window.deletePersonReview = deletePersonReview;
+
 window.createManagedAccount = createManagedAccount;
 window.loadManagedAccounts = loadManagedAccounts;
 window.editManagedAccount = editManagedAccount;
