@@ -808,10 +808,18 @@ async function loadPeople(){
     }
   }catch(e){console.warn('Không đọc được dữ liệu lưu tạm:',e)}
   try{
-    const r=await api('so_tay_suc_khoe?select=id,data,updated_at&order=updated_at.desc');
+    const r=await api('so_tay_suc_khoe_tom_tat?select=id,data,updated_at&order=updated_at.desc');
     if(!r.ok)throw new Error(await r.text());
     const rows=await r.json();
-    people=rows.map(x=>Object.assign({id:x.id},x.data||{}));
+    // View tom_tat không truyền ảnh base64 trong danh sách, giúp giảm mạnh dung lượng tải.
+    // Giữ ảnh từ cache nếu đã có; ảnh của hồ sơ chưa có cache sẽ tải riêng khi mở sửa.
+    const oldById=new Map(people.map(p=>[String(p.id),p]));
+    people=rows.map(x=>{
+      const p=Object.assign({id:x.id},x.data||{});
+      const old=oldById.get(String(x.id));
+      if(old && Object.prototype.hasOwnProperty.call(old,'photo')) p.photo=old.photo;
+      return p;
+    });
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không lưu được dữ liệu tạm:',e)}
     render();
     Promise.allSettled([loadDx(),loadReviews()]).then(results=>{
@@ -853,6 +861,8 @@ function resetPersonForm(){
 let personEditReturnState=null;
 let personEditReturnDetailId=null;
 let currentViewedPersonId=null;
+// Tránh gọi lặp khi hồ sơ không có ảnh; ảnh chỉ tải riêng khi người dùng mở xem hồ sơ.
+const detailPhotoFetches=new Set();
 let openingPersonFromDetail=false;
 function rememberPersonEditReturnState(){
   const ids=['dutyPanel','censusPanel','dashboardList','dailyReportPanel','mainPeopleTableWrap'];
@@ -892,7 +902,7 @@ function restorePersonEditReturnState(){
   requestAnimationFrame(()=>window.scrollTo({top:state.scrollY||0,behavior:'auto'}));
 }
 
-function openPerson(id=null){
+async function openPerson(id=null){
   if(id){
     const selected=people.find(x=>String(x.id)===String(id));
     if(!selected){alert('Không tìm thấy hồ sơ cần sửa. Vui lòng tải lại danh sách.');return;}
@@ -916,6 +926,14 @@ function openPerson(id=null){
   if(!id&&isMedicalAccount()){$('nha').value='Y tế';$('nha').disabled=true;syncHouseLocation();}
   if(id){
     const p=people.find(x=>String(x.id)===String(id));if(!p)return;
+    // Nếu danh sách được tải từ view nhẹ và ảnh chưa có trong cache, lấy riêng hồ sơ này
+    // trước khi sửa để không vô tình xóa ảnh khi lưu lại JSONB.
+    if(!Object.prototype.hasOwnProperty.call(p,'photo')){
+      try{
+        const photoResponse=await api('so_tay_suc_khoe?select=id,data&id=eq.'+encodeURIComponent(id));
+        if(photoResponse.ok){const photoRows=await photoResponse.json();const full=photoRows?.[0]?.data;if(full){p.photo=full.photo||'';}}
+      }catch(photoErr){console.warn('Không tải được ảnh hồ sơ riêng:',photoErr)}
+    }
     $('modalTitle').textContent='Sửa thông tin đối tượng';$('editId').value=id;$('addRecordTypeWrap').style.display='none';
     ['ma','soSo','ten','namsinh','gioitinh','khuyettat','cccd','ngaynhap','nha','diachi','nguoiThan','sdtNguoiThan','vitri','bhyt','ngayTaiKham','bvInfo','thuocKhacText','tinhTrang','trangthai','statusDate'].forEach(k=>{if($(k)&&p[k]!=null)$(k).value=p[k]});
     setQuanHeValue(p.quanHe||'');
@@ -1447,6 +1465,24 @@ function viewPerson(id){
   const dxHistory=dx.length>1?`<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700;color:#526170;padding:8px;background:#f5f7fa;border-radius:7px">Xem lịch sử ${dx.length-1} lượt khám cũ</summary><div class="dx-list" style="margin-top:8px">${dx.slice(1).map(d=>`<div class="dx-item"><b>${esc(d.dateTime||'—')}</b><br>Lý do: ${esc(d.reason||'—')}<br>Hướng xử lý: ${esc(dxActionText(d.action))}${canManagePerson(p)?`<br><button class="btn blue" onclick="openDxForm('${p.id}','${d.id}')">Sửa lượt khám</button>`:''}${isAdmin()?` <button class="btn red" onclick="deleteDx('${d.id}','${p.id}')">Xóa lượt khám</button>`:''}</div>`).join('')}</div></details>`:'';
   $('detail').innerHTML=`<h2>${esc(p.ten)}</h2><div class="notice">Mã: <b>${esc(p.ma)}</b> • ${esc(p.trangthai||'')}</div><div class="grid">${p.photo?`<div><img class="preview zoomable-photo" src="${p.photo}" onclick="openPhotoZoom(this.src)" title="Nhấn để phóng to"></div>`:''}<div><b>Năm sinh:</b> ${esc(p.namsinh||'—')}</div><div><b>Giới tính:</b> ${esc(p.gioitinh||'—')}</div><div><b>Khuyết tật:</b> ${esc(p.khuyettat||'Không xác định')}</div><div><b>Số sổ BTXH:</b> ${esc(p.soSo||'—')}</div><div><b>CCCD:</b> ${esc(p.coCccd|| (p.cccd?'Có':'Không'))}${p.cccd?` — ${esc(p.cccd)}`:''}</div><div><b>BHYT:</b> ${esc(p.bhyt||'—')}</div><div><b>Ngày nhập Trung tâm:</b> ${esc(formatDateVN(p.ngaynhap)||'—')}</div><div><b>Nhà:</b> ${esc(p.nha||'—')}</div><div class="full"><b>Địa chỉ:</b> ${esc(p.diachi||'—')}</div><div><b>Người thân:</b> ${esc(p.nguoiThan||'—')}</div><div><b>Quan hệ:</b> ${esc(p.quanHe||'—')}</div><div><b>SĐT người thân:</b> ${esc(p.sdtNguoiThan||'—')}</div><div><b>Vị trí:</b> ${esc(locationText(p))}</div><div class="full"><b>Số lần tiếp tục nhập Trung tâm:</b> ${(p.readmissionHistory||[]).length}<div><b>Lịch sử nhập lại:</b> ${(p.readmissionHistory||[]).length?(p.readmissionHistory||[]).slice().reverse().map(h=>`<div class="dx-item">${esc(formatDateVN(h.date))} — Tiếp tục nhập Trung tâm${h.fromStatus?` (trước đó: ${esc(h.fromStatus)})`:``}</div>`).join(''):'Chưa ghi nhận lần nhập lại.'}</div></div><div class="full"><b>Lịch sử chuyển khu/nhà, y tế, bệnh viện:</b> ${(p.locationHistory||[]).length?(p.locationHistory||[]).slice().reverse().map((h,hi)=>`<div class="dx-item"><b>${esc(new Date(h.date).toLocaleString('vi-VN'))}</b>: ${esc(h.from)} → ${esc(h.to)}${h.note?`<br>Ghi chú: ${esc(h.note)}`:''}${isAdmin()?`<br><button class="btn blue" onclick="editTransferHistory('${String(p.id).replace(/'/g,"\\'")}',${(p.locationHistory||[]).length-1-hi})">Sửa lịch sử</button> <button class="btn red" onclick="deleteTransferHistory('${String(p.id).replace(/'/g,"\\'")}',${(p.locationHistory||[]).length-1-hi})">Xóa lịch sử</button>`:''}</div>`).join(''):'Chưa có lịch sử chuyển vị trí.'}</div><div><b>Phân loại sức khỏe:</b> ${esc(p.phanLoaiSucKhoe||"Sức khỏe ổn định")}</div><div><b>Ngày tái khám gần nhất:</b> ${esc(formatDateVN(String(latestReview).slice(0,10))||'—')}</div></div><div class="section">Khám đột xuất (${dx.length} lượt)</div>${canManagePerson(p)?`<button class="btn purple" onclick="openDxForm('${p.id}')">＋ Thêm khám đột xuất</button>`:''}${(isAdmin()||isManager())?`<button class="btn blue" onclick="openTransfer('${p.id}')">↔ Chuyển vị trí</button>`:''}${canManagePerson(p)?` <button type="button" class="btn blue" onclick="openPersonFromDetail('${String(p.id).replace(/'/g,"\\'")}')">✎ Sửa hồ sơ</button>`:''}${isAdmin()?` <button class="btn red" onclick="delPerson('${String(p.id).replace(/'/g,"\\'")}')">Xóa hồ sơ đối tượng</button>`:''}<div class="dx-list" style="margin-top:10px">${latestDx?`<div class="dx-item"><b>Lượt khám mới nhất — ${esc(latestDx.dateTime||'—')}</b><br>Lý do: ${esc(latestDx.reason||'—')}<br>Hướng xử lý: ${esc(dxActionText(latestDx.action))}${canManagePerson(p)?`<br><button class="btn blue" onclick="openDxForm('${p.id}','${latestDx.id}')">Sửa lượt khám</button>`:''}${isAdmin()?` <button class="btn red" onclick="deleteDx('${latestDx.id}','${p.id}')">Xóa lượt khám</button>`:''}</div>`:'Chưa có lần khám nào.'}${dxHistory}</div>`;
   openModal('detailModal');
+  // Danh sách tải nhanh không chứa ảnh. Khi người dùng xem hồ sơ, tải ảnh từ bảng gốc
+  // ở nền rồi cập nhật phần xem hồ sơ; không yêu cầu quyền Sửa.
+  const photoKey=String(id);
+  if(!p.photo && !detailPhotoFetches.has(photoKey)){
+    detailPhotoFetches.add(photoKey);
+    api('so_tay_suc_khoe?select=id,data&id=eq.'+encodeURIComponent(id))
+      .then(async photoResponse=>{
+        if(!photoResponse.ok) throw new Error(await photoResponse.text());
+        const photoRows=await photoResponse.json();
+        const full=photoRows?.[0]?.data;
+        if(full && full.photo){
+          const current=people.find(x=>String(x.id)===photoKey);
+          if(current){current.photo=full.photo;}
+          if(String(currentViewedPersonId)===photoKey && $('detailModal')?.classList.contains('show')) viewPerson(id);
+        }
+      })
+      .catch(photoErr=>{detailPhotoFetches.delete(photoKey);console.warn('Không tải được ảnh khi xem hồ sơ:',photoErr);});
+  }
 }
 function toLocalDateTimeInput(value){const d=new Date(value);if(Number.isNaN(d.getTime()))return '';const pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function editTransferHistory(personId,index){
