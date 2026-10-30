@@ -324,7 +324,19 @@ body.meal-only-authenticated #mealOnlyBar{display:flex}
 <div class="field"><label>BHYT</label><input id="bhyt" placeholder="Nhập số thẻ BHYT"></div>
 <div class="field"><label>Ngày tái khám gần nhất</label><input id="ngayTaiKham" type="date"></div>
 <div class="field full" id="bvWrap" style="display:none"><label>Tên bệnh viện <span style="color:#c00">*</span></label><input id="bvInfo" placeholder="Nhập tên bệnh viện đang điều trị" /></div>
-<div class="field full"><label>Ảnh</label><div class="photo"><img id="preview" class="preview" alt=""><input id="photo" type="file" accept="image/*" onchange="previewPhoto(event)"></div></div>
+<div class="field full">
+<label>Ảnh</label>
+<div class="photo" style="align-items:flex-start;flex-wrap:wrap">
+  <img id="preview" class="preview" alt="Ảnh đối tượng">
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button type="button" class="btn blue" onclick="document.getElementById('photoCamera').click()">📷 Chụp ảnh trực tiếp</button>
+    <button type="button" class="btn gray" onclick="document.getElementById('photoUpload').click()">🖼️ Tải ảnh lên</button>
+  </div>
+  <input id="photoCamera" type="file" accept="image/*" capture="environment" hidden onchange="previewPhoto(event)">
+  <input id="photoUpload" type="file" accept="image/*" hidden onchange="previewPhoto(event)">
+</div>
+<small style="display:block;color:#64748b;margin-top:6px">Có thể chụp ảnh bằng camera hoặc chọn ảnh có sẵn trong thiết bị.</small>
+</div>
 </div>
 <!-- Đã bỏ các trường thuốc Huyết áp, Tâm thần, Bệnh khác và Tình trạng hiện tại. -->
 <div class="section">3. Trạng thái hồ sơ</div>
@@ -864,7 +876,7 @@ function updateAddRecordTypeHint(){
   if(hint)hint.textContent=type==='existing'?'Hồ sơ chỉ được bổ sung vào danh sách đang quản lý, không tạo biến động tăng quân số trong ngày.':'Hồ sơ này sẽ được ghi nhận là đối tượng tiếp nhận mới trong báo cáo diễn biến.';
 }
 function resetPersonForm(){
-  $('personForm').reset();if($('addRecordType'))$('addRecordType').value='new';updateAddRecordTypeHint();$('addRecordTypeWrap').style.display='block';$('nha').disabled=false;$('editId').value='';photoData='';$('preview').src='';$('coCccd').value='Không';$('cccd').value='';toggleCccd();toggleOtherDisease();$('modalTitle').textContent='Thêm đối tượng mới';$('statusDateWrap').style.display='none';$('bvWrap').style.display='none';
+  $('personForm').reset();if($('addRecordType'))$('addRecordType').value='new';updateAddRecordTypeHint();$('addRecordTypeWrap').style.display='block';$('nha').disabled=false;$('editId').value='';photoData='';$('preview').src='';if($('photoCamera'))$('photoCamera').value='';if($('photoUpload'))$('photoUpload').value='';$('coCccd').value='Không';$('cccd').value='';toggleCccd();toggleOtherDisease();$('modalTitle').textContent='Thêm đối tượng mới';$('statusDateWrap').style.display='none';$('bvWrap').style.display='none';
 }
 // Ghi nhớ trang đang xem trước khi mở form sửa hồ sơ để lưu xong quay lại đúng chỗ.
 let personEditReturnState=null;
