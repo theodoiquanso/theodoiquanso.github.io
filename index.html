@@ -1728,7 +1728,18 @@ function censusZoneName(z){return ({elderly:'Khu Chăm sóc nuôi dưỡng Ngư�
 function localDateKeyReview(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
 function latestPersonReviewDate(p){const dates=personReviewHistory(p).map(it=>String(it.date||'').slice(0,10));const legacy=String(p?.ngayTaiKham||'').slice(0,10);if(/^\d{4}-\d{2}-\d{2}$/.test(legacy))dates.push(legacy);const valid=dates.filter(v=>/^\d{4}-\d{2}-\d{2}$/.test(v)).sort();return valid.length?valid[valid.length-1]:'';}
 // Thống kê theo NGÀY của từng đối tượng, không cộng nhiều lượt trong cùng một ngày thành nhiều ngày.
-function countUniquePersonReviewDays(rows){const seen=new Set();for(const row of rows){const person=row.p||row.person||row;const item=row.item||row;const date=String(row.day||item.date||'').slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(date))continue;const personKey=String(person.id??person.ma??person.ten??'');seen.add(personKey+'|'+date);}return seen.size;}
+function reviewPersonStableKey(p){
+ const ma=String(p?.ma||p?.maDoiTuong||p?.code||'').trim().toLocaleLowerCase('vi');
+ if(ma)return 'ma:'+ma;
+ const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/Đ/g,'d').replace(/\s+/g,' ').trim().toLocaleLowerCase('vi');
+ return 'person:'+norm(p?.ten||p?.hoTen||p?.name)+'|'+norm(p?.namsinh||p?.namSinh)+'|'+norm(p?.nha||p?.house);
+}
+function uniquePersonReviewDayRows(rows){
+ const map=new Map();
+ for(const row of rows){const p=row.p||row.person||row;const item=row.item||row;const day=String(row.day||item.date||'').slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;const key=reviewPersonStableKey(p)+'|'+day;if(!map.has(key))map.set(key,row);}
+ return [...map.values()];
+}
+function countUniquePersonReviewDays(rows){return uniquePersonReviewDayRows(rows).length;}
 function reviewCountToday(list){const today=localDateKeyReview();return list.filter(p=>isCurrentlyManaged(p)&&latestPersonReviewDate(p)===today).length;}
 function censusListForZone(z){const a=people.filter(isCurrentlyManaged);if(z==='medical')return a.filter(p=>currentLocation(p)==='Phòng Y tế');return a.filter(p=>currentLocation(p)==='Khu'&&censusZoneForHouse(p.nha)===z);}
 function showKhuPanel(){closeOtherMainSections('censusPanel');const panel=$('censusPanel');panel.style.display='block';renderCensusHome();panel.scrollIntoView({behavior:'smooth',block:'start'});}
@@ -1773,7 +1784,7 @@ function zoneReviewRows(list,period){const now=new Date();now.setHours(23,59,59,
       const bh=Number(String(b.p.nha||'').match(/\d+/)?.[0]||999);
       return ah-bh || a.day.localeCompare(b.day) || String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi');
     });}
-function showZoneReviewRange(z){const detail=$('zoneReviewStatsDetail');if(!detail)return;const from=$('zoneReviewFrom')?.value||'';const to=$('zoneReviewTo')?.value||'';const selected=$('zoneReviewHouseFilter')?.value||'all';if(!from||!to||from>to){detail.innerHTML='Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).';return;}let rows=censusListForZone(z).flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>x.day&&x.day>=from&&x.day<=to).sort((a,b)=>a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi'));if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;const dayCount=countUniquePersonReviewDays(rows);detail.innerHTML=`<b>${dayCount} ngày tái khám từ ${esc(formatDateVN(from))} đến ${esc(formatDateVN(to))} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Năm sinh</th><th>Mã đối tượng</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.namsinh||'Chưa cập nhật')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'')}</td><td>${esc(reviewNoteDisplay(item))}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong khoảng ngày đã chọn.</div>'}`;}
+function showZoneReviewRange(z){const detail=$('zoneReviewStatsDetail');if(!detail)return;const from=$('zoneReviewFrom')?.value||'';const to=$('zoneReviewTo')?.value||'';const selected=$('zoneReviewHouseFilter')?.value||'all';if(!from||!to||from>to){detail.innerHTML='Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).';return;}let rows=censusListForZone(z).flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>x.day&&x.day>=from&&x.day<=to).sort((a,b)=>a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi'));if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);rows=uniquePersonReviewDayRows(rows);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;const dayCount=countUniquePersonReviewDays(rows);detail.innerHTML=`<b>${dayCount} ngày tái khám từ ${esc(formatDateVN(from))} đến ${esc(formatDateVN(to))} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Năm sinh</th><th>Mã đối tượng</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.namsinh||'Chưa cập nhật')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'')}</td><td>${esc(reviewNoteDisplay(item))}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong khoảng ngày đã chọn.</div>'}`;}
 function filterCensusZoneScheduleDate(z,date){
   const pop=$('zoneReviewResults');if(!pop)return;
   const houseOrder=z==='elderly'?[1,2,3,4]:z==='homeless'?[5,6,7,8,9]:z==='mental'?[10,11]:[];
@@ -2109,12 +2120,12 @@ function exportSchedule(scope,id,format,action="preview"){
  const selectedDate=String($(dateInputId)?.value||'').slice(0,10);
  const allRows=list.flatMap(p=>{
    const history=personReviewHistory(p);
-   const personKey=String(p.id||p.ma||[p.ten||'',p.namsinh||'',p.nha||''].join('|')).trim();
+   const personKey=reviewPersonStableKey(p);
    return history.map(item=>({personKey,ngay:String(item.date||'').slice(0,10),ten:p.ten||'',namsinh:p.namsinh||'',ma:p.ma||'',nha:p.nha||'',tinhTrang:p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'',ghiChu:reviewNoteDisplay(item)}));
  }).filter(r=>r.ngay&&(!selectedDate||r.ngay===selectedDate));
  // Báo cáo chỉ tính một ngày cho mỗi đối tượng, dù có nhiều lượt ghi nhận cùng ngày.
  const uniqueByPersonDay=new Map();
- allRows.forEach(r=>uniqueByPersonDay.set(r.personKey+'|'+r.ngay,r));
+ allRows.forEach(r=>{const key=r.personKey+'|'+r.ngay;if(!uniqueByPersonDay.has(key))uniqueByPersonDay.set(key,r);});
  const rows=[...uniqueByPersonDay.values()].sort((a,b)=>{
     const ah=Number(String(a.nha||'').replace(/^Nhà\s*/i,''));
     const bh=Number(String(b.nha||'').replace(/^Nhà\s*/i,''));
