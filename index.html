@@ -231,7 +231,17 @@ body.meal-only-authenticated #mealOnlyBar{display:flex}
 <button class="btn gray manager-only" style="display:none" onclick="document.getElementById('importFile').click()">Khôi phục bản sao lưu</button>
 <input id="importFile" type="file" accept=".json" hidden onchange="importData(event)">
 <button id="importExcelBtn" class="btn green" style="display:none" type="button" onclick="document.getElementById('importExcelFile').click()">⬆ Import Excel danh sách</button>
-<button id="downloadImportTemplateBtn" class="btn blue" style="display:none" type="button" onclick="downloadImportTemplate()">⬇ Tải mẫu Excel</button>
+<div id="adminImportExportWrap" class="manager-only" style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
+<select id="adminImportExportScope" aria-label="Chọn phạm vi xuất file import" style="padding:9px;border:1px solid #cbd5e1;border-radius:8px;max-width:260px">
+<option value="all">Toàn bộ: Nhà 1–11 + Y tế + Bệnh viện</option>
+<option value="khu">Tất cả các Nhà 1–11</option>
+<option value="yte">Phòng Y tế</option>
+<option value="benhvien">Bệnh viện</option>
+<option value="nha1">Nhà 1</option><option value="nha2">Nhà 2</option><option value="nha3">Nhà 3</option><option value="nha4">Nhà 4</option><option value="nha5">Nhà 5</option><option value="nha6">Nhà 6</option><option value="nha7">Nhà 7</option><option value="nha8">Nhà 8</option><option value="nha9">Nhà 9</option><option value="nha10">Nhà 10</option><option value="nha11">Nhà 11</option>
+</select>
+<button id="adminExportImportFileBtn" class="btn purple" type="button" onclick="exportImportReadyFile()">⬇ Tải Import Excel danh sách</button>
+</div>
+<button id="medicalAddPersonBtn" class="btn green" style="display:none" type="button" onclick="openPerson()">＋ Thêm đối tượng (Y tế)</button>
 <input id="importExcelFile" type="file" accept=".xlsx,.xls" hidden onchange="importPeopleExcel(event)">
 </div>
 
@@ -718,6 +728,8 @@ function updateAuthUI(){
   const excelAllowed=auth&&canImportExcel();
   if($('importExcelBtn'))$('importExcelBtn').style.display=excelAllowed?'inline-block':'none';
   if($('downloadImportTemplateBtn'))$('downloadImportTemplateBtn').style.display=excelAllowed?'inline-block':'none';
+  if($('adminImportExportWrap'))$('adminImportExportWrap').style.display=isAdmin()?'flex':'none';
+  if($('medicalAddPersonBtn'))$('medicalAddPersonBtn').style.display=(auth&&isManager()&&isMedicalAccount())?'inline-block':'none';
 }
 async function activateAuthenticatedApp(){
   updateAuthUI();
@@ -944,7 +956,7 @@ async function openPerson(id=null){
     const existingOption=$('addRecordType').querySelector('option[value="existing"]');if(existingOption)existingOption.disabled=false;
   }
   if(!id&&!isAdmin()&&!isMedicalAccount()){$('nha').value=getAssignedHouse();$('nha').disabled=true;syncHouseLocation();}
-  if(!id&&isMedicalAccount()){$('nha').value='Y tế';$('nha').disabled=true;syncHouseLocation();}
+  if(!id&&isMedicalAccount()){$('nha').value='Y tế';$('nha').disabled=true;syncHouseLocation();if($('vitri')&&!['Phòng Y tế','Bệnh viện'].includes($('vitri').value)){$('vitri').value='Phòng Y tế';toggleLocationFields();}}
   if(id){
     const p=people.find(x=>String(x.id)===String(id));if(!p)return;
     // Nếu danh sách được tải từ view nhẹ và ảnh chưa có trong cache, lấy riêng hồ sơ này
@@ -2080,6 +2092,77 @@ function downloadImportTemplate(){
   ws.addRow(['VD001','','NGUYỄN VĂN A',1960,'Nam','Không','Không','','01/01/2020','Nhà 1','Địa chỉ','','','','Khu','Sức khỏe ổn định','','','','Đang quản lý','']);ws.getRow(2).font={italic:true,color:{argb:'FF64748B'}};
   wb.xlsx.writeBuffer().then(buf=>{const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Mau_Import_Theo_Doi_Quan_So.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}).catch(err=>alert('Không tạo được mẫu Excel: '+err.message));
 }
+function exportImportReadyFile(){
+  if(!isAdmin()){alert('Chỉ ADMIN mới được xuất file hồ sơ theo phạm vi toàn Trung tâm.');return;}
+  if(!window.ExcelJS){alert('Chưa tải được thư viện Excel. Vui lòng kiểm tra kết nối mạng rồi thử lại.');return;}
+  const scope=$('adminImportExportScope')?.value||'all';
+  const rows=people.filter(p=>{
+    const loc=String(currentLocation(p)||p.vitri||'').trim().toLocaleLowerCase('vi-VN');
+    const house=normalizeHouseScope(p.nha);
+    if(scope==='all')return true;
+    if(scope==='khu')return /^nhà (1[01]|[1-9])$/.test(house);
+    if(scope==='yte')return ['phòng y tế','y tế'].includes(loc);
+    if(scope==='benhvien')return loc==='bệnh viện';
+    if(/^nha\d+$/.test(scope))return house==='nhà '+Number(scope.slice(3));
+    return false;
+  }).sort((a,b)=>{
+    const ah=String(a.nha||'').localeCompare(String(b.nha||''),'vi');
+    return ah||String(a.ten||'').localeCompare(String(b.ten||''),'vi');
+  });
+  const headers=['Mã đối tượng','Số sổ','Họ và tên','Năm sinh','Giới tính','Khuyết tật','Có CCCD','Số CCCD','Ngày nhập Trung tâm','Nhà / Y tế','Địa chỉ','Họ tên người thân','Quan hệ','Số điện thoại người thân','Đang ở','Phân loại sức khỏe','BHYT','Ngày tái khám gần nhất','Tên bệnh viện','Trạng thái','Ngày trạng thái','Ảnh hồ sơ'];
+  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Danh sách đối tượng');
+  ws.addRow(headers);
+  ws.getRow(1).font={bold:true,color:{argb:'FFFFFFFF'}};
+  ws.getRow(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF2C3E50'}};
+  ws.views=[{state:'frozen',ySplit:1}];
+  ws.autoFilter={from:{row:1,column:1},to:{row:1,column:headers.length}};
+  [18,14,24,12,12,13,12,16,20,15,28,24,18,22,16,24,20,22,24,24,18,18].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  const fmt=d=>{if(!d)return '';const v=String(d).slice(0,10);const m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:v;};
+  rows.forEach((p,index)=>{
+    const rowNo=index+2;
+    ws.addRow([
+      p.ma||'',p.soSo||'',p.ten||'',p.namsinh||'',p.gioitinh||'',p.khuyettat||'Không',
+      p.coCccd||'Không',p.cccd||'',fmt(p.ngaynhap),p.nha||'',p.diachi||'',p.nguoiThan||'',
+      p.quanHe||'',p.sdtNguoiThan||'',currentLocation(p)||p.vitri||'',p.phanLoaiSucKhoe||'',
+      p.bhyt||'',fmt(p.ngayTaiKham),p.bvInfo||'',p.trangthai||'Đang quản lý',fmt(p.statusDate),''
+    ]);
+    const photo=String(p.photo||'').trim();
+    if(photo.startsWith('data:image/')){
+      try{
+        const match=photo.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,([\s\S]+)$/i);
+        if(match){
+          let ext=match[1].toLowerCase();if(ext==='jpg')ext='jpeg';
+          // ExcelJS hỗ trợ PNG/JPEG; chuyển đổi định dạng khác ở phía trình duyệt.
+          if(ext==='png'||ext==='jpeg'){
+            const imageId=wb.addImage({base64:match[2],extension:ext});
+            ws.addImage(imageId,{tl:{col:21,row:rowNo-1},br:{col:22,row:rowNo}});
+            ws.getRow(rowNo).height=62;
+          }else{
+            const img=new Image();
+            img.src=photo;
+            if(img.complete&&img.naturalWidth){
+              const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
+              canvas.getContext('2d').drawImage(img,0,0);
+              const jpeg=canvas.toDataURL('image/jpeg',0.82).split(',')[1];
+              const imageId=wb.addImage({base64:jpeg,extension:'jpeg'});
+              ws.addImage(imageId,{tl:{col:21,row:rowNo-1},br:{col:22,row:rowNo}});
+              ws.getRow(rowNo).height=62;
+            }
+          }
+        }
+      }catch(err){console.warn('Không thể nhúng ảnh hồ sơ:',p.ma,err);}
+    }
+  });
+  const label=scope==='all'?'Toan_bo':scope==='khu'?'Tat_ca_cac_Nha':scope==='yte'?'Phong_Y_te':scope==='benhvien'?'Benh_vien':scope.replace('nha','Nha_');
+  wb.xlsx.writeBuffer().then(buf=>{
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=`Ho_so_Import_${label}_${localDateKey()}.xlsx`;
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+    const photoCount=rows.filter(p=>String(p.photo||'').startsWith('data:image/')).length;
+    alert(`Đã xuất ${rows.length} hồ sơ, kèm ${photoCount} hồ sơ có ảnh (nếu định dạng ảnh được Excel hỗ trợ), theo phạm vi đã chọn. File có thể dùng lại tại mục Import Excel danh sách.`);
+  }).catch(err=>alert('Không xuất được file Excel: '+(err?.message||err)));
+}
 function importExcelDate(value){
   if(value===null||value===undefined||value==='')return '';
   if(value instanceof Date&&!isNaN(value))return value.toISOString().slice(0,10);
@@ -2097,9 +2180,30 @@ async function importPeopleExcel(e){
     if(!window.ExcelJS)throw new Error('Không tải được thư viện Excel. Vui lòng kiểm tra kết nối mạng.');
     const wb=new ExcelJS.Workbook();await wb.xlsx.load(await file.arrayBuffer());const ws=wb.worksheets[0];if(!ws||ws.rowCount<2)throw new Error('File Excel không có dữ liệu.');
     const headersMap={};ws.getRow(1).eachCell((cell,col)=>headersMap[importHeaderKey(cell.value)]=col);
+    const photoByRow={};
+    try{
+      const media=wb.model?.media||[];
+      (ws.getImages?.()||[]).forEach(pic=>{
+        const rowIndex=(pic.range?.tl?.nativeRow??pic.range?.tl?.row??-1);
+        const image=media[pic.imageId];
+        if(rowIndex<1||!image)return;
+        let base64=image.base64||'';
+        if(!base64&&image.buffer)base64=Array.from(new Uint8Array(image.buffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
+        if(base64){
+          if(/^[0-9a-f]+$/i.test(base64)&&base64.length%2===0){
+            const bytes=base64.match(/.{2}/g).map(x=>parseInt(x,16));
+            let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.slice(i,i+0x8000));
+            base64=btoa(binary);
+          }
+          const ext=String(image.extension||'jpeg').toLowerCase();
+          const mime=ext==='png'?'image/png':'image/jpeg';
+          photoByRow[rowIndex+1]=`data:${mime};base64,${base64}`;
+        }
+      });
+    }catch(imageErr){console.warn('Không đọc được ảnh nhúng trong Excel:',imageErr);}
     const aliases={ma:['madoituong','madt','ma'],soSo:['soso','sosobtxh'],ten:['hovaten','ten','hoten'],namsinh:['namsinh'],gioitinh:['gioitinh'],khuyettat:['khuyettat','doituongkhuyettat'],coCccd:['cocccd','cccd'],cccd:['socccd','cccdso'],ngaynhap:['ngaynhaptrungtam','ngaynhap'],nha:['nhayte','nha','phamvi'],diachi:['diachi'],nguoiThan:['hotennguoithan','nguoithan'],quanHe:['quanhe'],sdtNguoiThan:['sodienthoainguoithan','sdtnguoithan','sodienthoai'],vitri:['dango','vitri'],phanLoaiSucKhoe:['phanloaisuckhoe','vitritheodoi'],bhyt:['bhyt','sothebhyt'],ngayTaiKham:['ngaytaikhamgannhat','ngaytaikham'],bvInfo:['tenbenhvien','benhvien'],trangthai:['trangthai'],statusDate:['ngaytrangthai','ngaytrangthaihoso']};
     const col={};for(const [key,names] of Object.entries(aliases)){for(const name of names){const idx=headersMap[importHeaderKey(name)];if(idx){col[key]=idx;break;}}}
-    if(!col.ma||!col.ten)throw new Error('File cần có ít nhất hai cột “Mã đối tượng” và “Họ và tên”. Hãy dùng nút Tải mẫu Excel.');
+    if(!col.ma||!col.ten)throw new Error('File cần có ít nhất hai cột “Mã đối tượng” và “Họ và tên”. Vui lòng tải file Import Excel danh sách do ADMIN xuất.');
     const admin=isAdmin(),medical=!admin&&isMedicalAccount(),assigned=String(getAssignedHouse()||'').trim(),prepared=[],errors=[],seen=new Set();
     const cellValue=(row,key)=>col[key]?importCell(row,col[key]):'';
     for(let rn=2;rn<=ws.rowCount;rn++){
@@ -2112,7 +2216,7 @@ async function importPeopleExcel(e){
       else{if(nha&&nha!==assigned){errors.push(`Dòng ${rn}: tài khoản ${assigned} không được import dữ liệu của ${nha}.`);continue;}nha=assigned;if(['phòng y tế','bệnh viện'].includes(vitri.toLocaleLowerCase('vi-VN'))){errors.push(`Dòng ${rn}: tài khoản nhà không được import hồ sơ tại ${vitri}.`);continue;}vitri='Khu';}
       const old=people.find(p=>String(p.ma||'').trim().toLocaleLowerCase('vi-VN')===key);if(old&&!canManagePerson(old)){errors.push(`Dòng ${rn}: mã ${ma} đã tồn tại ngoài phạm vi tài khoản.`);continue;}
       const date=k=>importExcelDate(col[k]?row.getCell(col[k]).value:'');const get=(k,def='')=>cellValue(row,k)||def;
-      const person={...(old||{}),id:old?.id||uid(),ma,soSo:get('soSo',old?.soSo||''),ten,namsinh:get('namsinh',old?.namsinh||''),gioitinh:get('gioitinh',old?.gioitinh||''),khuyettat:get('khuyettat',old?.khuyettat||'Không'),coCccd:get('coCccd',old?.coCccd||'Không'),cccd:get('cccd',old?.cccd||''),ngaynhap:date('ngaynhap')||old?.ngaynhap||'',nha,diachi:get('diachi',old?.diachi||''),nguoiThan:get('nguoiThan',old?.nguoiThan||''),quanHe:get('quanHe',old?.quanHe||''),sdtNguoiThan:get('sdtNguoiThan',old?.sdtNguoiThan||''),vitri,phanLoaiSucKhoe:get('phanLoaiSucKhoe',old?.phanLoaiSucKhoe||'Sức khỏe ổn định'),bhyt:get('bhyt',old?.bhyt||''),ngayTaiKham:date('ngayTaiKham')||old?.ngayTaiKham||'',bvInfo:get('bvInfo',old?.bvInfo||''),trangthai:get('trangthai',old?.trangthai||'Đang quản lý'),statusDate:date('statusDate')||old?.statusDate||'',updated:new Date().toISOString()};
+      const person={...(old||{}),id:old?.id||uid(),ma,soSo:get('soSo',old?.soSo||''),ten,namsinh:get('namsinh',old?.namsinh||''),gioitinh:get('gioitinh',old?.gioitinh||''),khuyettat:get('khuyettat',old?.khuyettat||'Không'),coCccd:get('coCccd',old?.coCccd||'Không'),cccd:get('cccd',old?.cccd||''),ngaynhap:date('ngaynhap')||old?.ngaynhap||'',nha,diachi:get('diachi',old?.diachi||''),nguoiThan:get('nguoiThan',old?.nguoiThan||''),quanHe:get('quanHe',old?.quanHe||''),sdtNguoiThan:get('sdtNguoiThan',old?.sdtNguoiThan||''),vitri,phanLoaiSucKhoe:get('phanLoaiSucKhoe',old?.phanLoaiSucKhoe||'Sức khỏe ổn định'),bhyt:get('bhyt',old?.bhyt||''),ngayTaiKham:date('ngayTaiKham')||old?.ngayTaiKham||'',bvInfo:get('bvInfo',old?.bvInfo||''),trangthai:get('trangthai',old?.trangthai||'Đang quản lý'),statusDate:date('statusDate')||old?.statusDate||'',photo:photoByRow[rn]||old?.photo||'',updated:new Date().toISOString()};
       if(!['Nam','Nữ',''].includes(person.gioitinh)){errors.push(`Dòng ${rn}: giới tính phải là Nam hoặc Nữ.`);continue;}if(!['Đang quản lý','Hồi gia','Tử vong','Chuyển đi nơi khác'].includes(person.trangthai)){errors.push(`Dòng ${rn}: trạng thái không hợp lệ.`);continue;}
       if(!old){person.khu='';person.khamDotXuat=[];person.locationHistory=[];person.readmissionHistory=[];person.dienBienHangNgay=[];}prepared.push({row:rn,p:person,old:!!old});
     }
