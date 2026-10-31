@@ -1398,9 +1398,22 @@ async function delPerson(id){
   const p=people.find(x=>String(x.id)===String(id));if(!p)return;if(!confirm('Xóa đối tượng '+p.ten+'?'))return;
   rememberPersonEditReturnState();const prior=personEditReturnState;
   try{
-    const r=await api('so_tay_suc_khoe?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
-    if(!r.ok)throw new Error(await r.text());
-    await loadPeople();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);alert('Đã xóa hồ sơ đối tượng.');
+    // Chỉ báo xóa thành công khi Supabase trả về đúng bản ghi đã bị xóa.
+    const r=await api('so_tay_suc_khoe?id=eq.'+encodeURIComponent(id)+'&select=id',{method:'DELETE',headers:headers({'Prefer':'return=representation'})});
+    const raw=await r.text();
+    if(!r.ok)throw new Error(raw||('Supabase trả mã '+r.status));
+    let deleted=[];try{deleted=raw?JSON.parse(raw):[]}catch(_){throw new Error('Không xác minh được kết quả xóa từ Supabase.');}
+    if(!Array.isArray(deleted)||!deleted.some(x=>String(x.id)===String(id))){
+      throw new Error('Supabase không xác nhận đã xóa hồ sơ này. Có thể tài khoản chưa đủ quyền xóa hoặc hồ sơ không còn khớp dữ liệu.');
+    }
+    // Xóa bản ghi khỏi bộ nhớ và cache ngay sau khi máy chủ xác nhận, tránh danh sách cũ hiện lại.
+    people=people.filter(x=>String(x.id)!==String(id));
+    const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
+    try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không cập nhật được cache sau khi xóa:',e)}
+    render();
+    await loadPeople();
+    restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
+    alert('Đã xóa hồ sơ đối tượng.');
   }catch(err){personEditReturnState=null;showCloudError(err)}
 }
 function refreshDashboardAfterDelete(state){
