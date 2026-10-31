@@ -1771,7 +1771,7 @@ function zoneReviewRows(list,period){const now=new Date();now.setHours(23,59,59,
       const bh=Number(String(b.p.nha||'').match(/\d+/)?.[0]||999);
       return ah-bh || a.day.localeCompare(b.day) || String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi');
     });}
-function showZoneReviewRange(z){const detail=$('zoneReviewStatsDetail');if(!detail)return;const from=$('zoneReviewFrom')?.value||'';const to=$('zoneReviewTo')?.value||'';const selected=$('zoneReviewHouseFilter')?.value||'all';if(!from||!to||from>to){detail.innerHTML='Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).';return;}let rows=censusListForZone(z).flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>x.day&&x.day>=from&&x.day<=to).sort((a,b)=>a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi'));if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;detail.innerHTML=`<b>${rows.length} lượt tái khám từ ${esc(formatDateVN(from))} đến ${esc(formatDateVN(to))} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Năm sinh</th><th>Mã đối tượng</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.namsinh||'Chưa cập nhật')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'')}</td><td>${esc(item.note||'')}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong khoảng ngày đã chọn.</div>'}`;}
+function showZoneReviewRange(z){const detail=$('zoneReviewStatsDetail');if(!detail)return;const from=$('zoneReviewFrom')?.value||'';const to=$('zoneReviewTo')?.value||'';const selected=$('zoneReviewHouseFilter')?.value||'all';if(!from||!to||from>to){detail.innerHTML='Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).';return;}let rows=censusListForZone(z).flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>x.day&&x.day>=from&&x.day<=to).sort((a,b)=>a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi'));if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;detail.innerHTML=`<b>${rows.length} lượt tái khám từ ${esc(formatDateVN(from))} đến ${esc(formatDateVN(to))} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Năm sinh</th><th>Mã đối tượng</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.namsinh||'Chưa cập nhật')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'')}</td><td>${esc(reviewNoteDisplay(item))}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong khoảng ngày đã chọn.</div>'}`;}
 function filterCensusZoneScheduleDate(z,date){
   const pop=$('zoneReviewResults');if(!pop)return;
   const houseOrder=z==='elderly'?[1,2,3,4]:z==='homeless'?[5,6,7,8,9]:z==='mental'?[10,11]:[];
@@ -1786,7 +1786,7 @@ function filterCensusZoneScheduleDate(z,date){
   const escCell=v=>esc(String(v??''));
   const groups=houseOrder.map(n=>({house:'Nhà '+n,rows:rows.filter(x=>String(x.p.nha||'').trim()==='Nhà '+n)})).filter(g=>g.rows.length);
   pop.innerHTML=`<div style="margin:8px 0;font-weight:700">${date?'Ngày '+esc(formatDateVN(date)):'Tất cả ngày'} — ${rows.length} lượt tái khám</div>
-  ${groups.length?groups.map(g=>`<section style="border:1px solid #d8e3ec;border-radius:9px;margin:10px 0;overflow:hidden"><h4 style="margin:0;padding:10px 12px;background:#eaf2f8;color:#2c3e50">${escCell(g.house)} — ${g.rows.length} lượt tái khám</h4><div class="table-wrap"><table style="display:table;min-width:850px"><thead><tr><th>Ngày tái khám</th><th>Họ và tên</th><th>Mã đối tượng</th><th>Nhà</th><th>Vị trí</th><th>Thuốc</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${g.rows.map(({p,item,day})=>`<tr><td>${escCell(formatDateVN(day))}</td><td>${escCell(p.ten||'')}</td><td>${escCell(p.ma||'')}</td><td>${escCell(p.nha||'')}</td><td>${escCell(locationText(p)||'')}</td><td>${escCell(meds(p)||'')}</td><td>${escCell(p.tinhTrang||'')}</td><td>${escCell(item.note||'')}</td></tr>`).join('')}</tbody></table></div><div class="cards">${g.rows.map(({p,item,day})=>`<div class="card"><b>${escCell(formatDateVN(day))} — ${escCell(p.ten||'')}</b><div>Mã đối tượng: ${escCell(p.ma||'')}</div><div>Năm sinh: ${escCell(p.namsinh||'Chưa cập nhật')} · Nhà: ${escCell(p.nha||'')}</div><div>Tình trạng: ${escCell(p.tinhTrang||'')}</div><div>Ghi chú: ${escCell(item.note||'')}</div></div>`).join('')}</div></section>`).join(''):`<div class="notice">Không có lịch tái khám${date?' trong ngày đã chọn':''}.</div>`}
+  ${groups.length?groups.map(g=>`<section style="border:1px solid #d8e3ec;border-radius:9px;margin:10px 0;overflow:hidden"><h4 style="margin:0;padding:10px 12px;background:#eaf2f8;color:#2c3e50">${escCell(g.house)} — ${g.rows.length} lượt tái khám</h4><div class="table-wrap"><table style="display:table;min-width:850px"><thead><tr><th>Ngày tái khám</th><th>Họ và tên</th><th>Mã đối tượng</th><th>Nhà</th><th>Vị trí</th><th>Thuốc</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${g.rows.map(({p,item,day})=>`<tr><td>${escCell(formatDateVN(day))}</td><td>${escCell(p.ten||'')}</td><td>${escCell(p.ma||'')}</td><td>${escCell(p.nha||'')}</td><td>${escCell(locationText(p)||'')}</td><td>${escCell(meds(p)||'')}</td><td>${escCell(p.tinhTrang||'')}</td><td>${escCell(reviewNoteDisplay(item))}</td></tr>`).join('')}</tbody></table></div><div class="cards">${g.rows.map(({p,item,day})=>`<div class="card"><b>${escCell(formatDateVN(day))} — ${escCell(p.ten||'')}</b><div>Mã đối tượng: ${escCell(p.ma||'')}</div><div>Năm sinh: ${escCell(p.namsinh||'Chưa cập nhật')} · Nhà: ${escCell(p.nha||'')}</div><div>Tình trạng: ${escCell(p.tinhTrang||'')}</div><div>Ghi chú: ${escCell(reviewNoteDisplay(item))}</div></div>`).join('')}</div></section>`).join(''):`<div class="notice">Không có lịch tái khám${date?' trong ngày đã chọn':''}.</div>`}
   <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">${houseOrder.map(n=>`<button type="button" class="btn purple" onclick="openCensusZone('${z}');setTimeout(()=>{renderCensusHouse(${n});showHouseReviewPanel(${n})},0)">＋ Nhập lịch Nhà ${n}</button>`).join('')}</div>`;
 }
 let censusZoneFilter='all';
@@ -1866,10 +1866,17 @@ function renderCensusHouse(n, query=''){
 
 function personReviewHistory(p){
   const items=Array.isArray(p.lichTaiKham)?p.lichTaiKham.slice():[];
-  if(!items.length && p.ngayTaiKham) items.push({date:String(p.ngayTaiKham).slice(0,10),createdAt:'',note:'Lịch cũ trong hồ sơ'});
+  // Ngày tái khám cũ chỉ có trong hồ sơ được hiển thị với ghi chú mặc định "Theo lịch".
+  if(!items.length && p.ngayTaiKham) items.push({date:String(p.ngayTaiKham).slice(0,10),createdAt:'',note:'[Theo lịch]'});
   items.sort((a,b)=>String(b.date||'').slice(0,10).localeCompare(String(a.date||'').slice(0,10))||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const seenDates=new Set();
   return items.filter(item=>{const date=String(item.date||'').slice(0,10);if(!date||seenDates.has(date))return false;seenDates.add(date);return true;});
+}
+function reviewNoteDisplay(item){
+  const note=String(item?.note||'').trim();
+  const match=note.match(/^\\[(Theo lịch|Đăng ký)\\]\\s*/);
+  if(match)return match[1]+(note.slice(match[0].length).trim()?' — '+note.slice(match[0].length).trim():'');
+  return note||'Theo lịch';
 }
 function showHouseReviewPanel(n, query='', period='range', showList=false, selectedDate='', rangeFrom='', rangeTo=''){
   const house='Nhà '+n;
@@ -2033,7 +2040,7 @@ function exportSchedule(scope,id,format,action="preview"){
  const selectedDate=String($(dateInputId)?.value||'').slice(0,10);
  const rows=list.flatMap(p=>{
    const history=personReviewHistory(p);
-   return history.map(item=>({ngay:String(item.date||'').slice(0,10),ten:p.ten||'',namsinh:p.namsinh||'',ma:p.ma||'',nha:p.nha||'',tinhTrang:p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'',ghiChu:item.note||''}));
+   return history.map(item=>({ngay:String(item.date||'').slice(0,10),ten:p.ten||'',namsinh:p.namsinh||'',ma:p.ma||'',nha:p.nha||'',tinhTrang:p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'',ghiChu:reviewNoteDisplay(item)}));
  }).filter(r=>r.ngay&&(!selectedDate||r.ngay===selectedDate)).sort((a,b)=>{
     const ah=Number(String(a.nha||'').replace(/^Nhà\s*/i,''));
     const bh=Number(String(b.nha||'').replace(/^Nhà\s*/i,''));
