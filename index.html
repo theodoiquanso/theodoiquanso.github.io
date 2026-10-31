@@ -1726,7 +1726,9 @@ function censusAge(p){return p.namsinh?new Date().getFullYear()-Number(p.namsinh
 function censusZoneForHouse(h){const n=Number(String(h||'').replace(/[^0-9]/g,''));if(n>=1&&n<=4)return 'elderly';if(n>=5&&n<=9)return 'homeless';if(n>=10&&n<=11)return 'mental';return '';}
 function censusZoneName(z){return ({elderly:'Khu Chăm sóc nuôi dưỡng Người cao tuổi',homeless:'Khu Chăm sóc nuôi dưỡng Người lang thang',mental:'Khu Chăm sóc nuôi dưỡng Người bệnh tâm thần',medical:'Khu Y tế'})[z]||'Các khu';}
 function localDateKeyReview(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
-function latestPersonReviewDate(p){const dates=personReviewHistory(p).map(it=>String(it.date||'').slice(0,10)).filter(v=>/^\d{4}-\d{2}-\d{2}$/.test(v)).sort();return dates.length?dates[dates.length-1]:String(p?.ngayTaiKham||'').slice(0,10);}
+function latestPersonReviewDate(p){const dates=personReviewHistory(p).map(it=>String(it.date||'').slice(0,10));const legacy=String(p?.ngayTaiKham||'').slice(0,10);if(/^\d{4}-\d{2}-\d{2}$/.test(legacy))dates.push(legacy);const valid=dates.filter(v=>/^\d{4}-\d{2}-\d{2}$/.test(v)).sort();return valid.length?valid[valid.length-1]:'';}
+// Thống kê theo NGÀY của từng đối tượng, không cộng nhiều lượt trong cùng một ngày thành nhiều ngày.
+function countUniquePersonReviewDays(rows){const seen=new Set();for(const row of rows){const person=row.p||row.person||row;const item=row.item||row;const date=String(row.day||item.date||'').slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(date))continue;const personKey=String(person.id??person.ma??person.ten??'');seen.add(personKey+'|'+date);}return seen.size;}
 function reviewCountToday(list){const today=localDateKeyReview();return list.filter(p=>isCurrentlyManaged(p)&&latestPersonReviewDate(p)===today).length;}
 function censusListForZone(z){const a=people.filter(isCurrentlyManaged);if(z==='medical')return a.filter(p=>currentLocation(p)==='Phòng Y tế');return a.filter(p=>currentLocation(p)==='Khu'&&censusZoneForHouse(p.nha)===z);}
 function showKhuPanel(){closeOtherMainSections('censusPanel');const panel=$('censusPanel');panel.style.display='block';renderCensusHome();panel.scrollIntoView({behavior:'smooth',block:'start'});}
@@ -1764,14 +1766,14 @@ function showCensusZoneSchedule(z){
  <div id="zoneReviewResults"></div>`;
  filterCensusZoneScheduleDate(z,'');showZoneReviewRange(z);
 }
-function zoneReviewPeriodButton(z,period,label){const list=censusListForZone(z);const count=zoneReviewRows(list,period).length;return `<button type="button" class="census-mini" onclick="showZoneReviewPeriod('${z}','${period}')"><span>${label}</span><b>${count}</b></button>`;}
+function zoneReviewPeriodButton(z,period,label){const list=censusListForZone(z);const count=countUniquePersonReviewDays(zoneReviewRows(list,period));return `<button type="button" class="census-mini" onclick="showZoneReviewPeriod('${z}','${period}')"><span>${label}</span><b>${count}</b></button>`;}
 function reviewPeriodStart(period,baseDate=new Date()){const end=new Date(baseDate);end.setHours(23,59,59,999);const start=new Date(end);start.setHours(0,0,0,0);if(period==='week'){const weekday=(start.getDay()+6)%7;start.setDate(start.getDate()-weekday);}else if(period==='month'){start.setDate(1);}else if(period==='threeMonths'){start.setMonth(start.getMonth()-3);}else if(period==='sixMonths'){start.setMonth(start.getMonth()-6);}else if(period==='year'){start.setFullYear(start.getFullYear()-1);}return start;}
 function zoneReviewRows(list,period){const now=new Date();now.setHours(23,59,59,999);const today=localDateKeyReview();const start=reviewPeriodStart(period,now);return list.flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>{if(!x.day)return false;if(period==='today')return latestPersonReviewDate(x.p)===today&&x.day===today;const d=new Date(x.day+'T00:00:00');return !isNaN(d)&&d>=start&&d<=now;}).sort((a,b)=>{
       const ah=Number(String(a.p.nha||'').match(/\d+/)?.[0]||999);
       const bh=Number(String(b.p.nha||'').match(/\d+/)?.[0]||999);
       return ah-bh || a.day.localeCompare(b.day) || String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi');
     });}
-function showZoneReviewRange(z){const detail=$('zoneReviewStatsDetail');if(!detail)return;const from=$('zoneReviewFrom')?.value||'';const to=$('zoneReviewTo')?.value||'';const selected=$('zoneReviewHouseFilter')?.value||'all';if(!from||!to||from>to){detail.innerHTML='Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).';return;}let rows=censusListForZone(z).flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>x.day&&x.day>=from&&x.day<=to).sort((a,b)=>a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi'));if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;detail.innerHTML=`<b>${rows.length} lượt tái khám từ ${esc(formatDateVN(from))} đến ${esc(formatDateVN(to))} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Năm sinh</th><th>Mã đối tượng</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.namsinh||'Chưa cập nhật')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'')}</td><td>${esc(reviewNoteDisplay(item))}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong khoảng ngày đã chọn.</div>'}`;}
+function showZoneReviewRange(z){const detail=$('zoneReviewStatsDetail');if(!detail)return;const from=$('zoneReviewFrom')?.value||'';const to=$('zoneReviewTo')?.value||'';const selected=$('zoneReviewHouseFilter')?.value||'all';if(!from||!to||from>to){detail.innerHTML='Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).';return;}let rows=censusListForZone(z).flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>x.day&&x.day>=from&&x.day<=to).sort((a,b)=>a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi'));if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;const dayCount=countUniquePersonReviewDays(rows);detail.innerHTML=`<b>${dayCount} ngày tái khám từ ${esc(formatDateVN(from))} đến ${esc(formatDateVN(to))} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Năm sinh</th><th>Mã đối tượng</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.namsinh||'Chưa cập nhật')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'')}</td><td>${esc(reviewNoteDisplay(item))}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong khoảng ngày đã chọn.</div>'}`;}
 function filterCensusZoneScheduleDate(z,date){
   const pop=$('zoneReviewResults');if(!pop)return;
   const houseOrder=z==='elderly'?[1,2,3,4]:z==='homeless'?[5,6,7,8,9]:z==='mental'?[10,11]:[];
@@ -1869,12 +1871,21 @@ function personReviewHistory(p){
   // Ngày tái khám cũ chỉ có trong hồ sơ được hiển thị với ghi chú mặc định "Theo lịch".
   if(!items.length && p.ngayTaiKham) items.push({date:String(p.ngayTaiKham).slice(0,10),createdAt:'',note:'[Theo lịch]'});
   items.sort((a,b)=>String(b.date||'').slice(0,10).localeCompare(String(a.date||'').slice(0,10))||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
-  const seenDates=new Set();
-  return items.filter(item=>{const date=String(item.date||'').slice(0,10);if(!date||seenDates.has(date))return false;seenDates.add(date);return true;});
+  // Giữ từng lượt để xem/sửa/xóa riêng; phần thống kê sẽ quy về 1 ngày/đối tượng.
+  const seen=new Set();
+  return items.filter(item=>{
+    const date=String(item.date||'').slice(0,10);
+    if(!date)return false;
+    const key=(item.id!==undefined&&item.id!==null&&String(item.id).trim()!=='')
+      ? 'id:'+String(item.id)
+      : 'legacy:'+date+'|'+String(item.note||'')+'|'+String(item.createdAt||'');
+    if(seen.has(key))return false;
+    seen.add(key);return true;
+  });
 }
 function reviewNoteDisplay(item){
   const note=String(item?.note||'').trim();
-  const match=note.match(/^\\[(Theo lịch|Đăng ký)\\]\\s*/);
+  const match=note.match(/^\[(Theo lịch|Đăng ký)\]\s*/);
   if(match)return match[1]+(note.slice(match[0].length).trim()?' — '+note.slice(match[0].length).trim():'');
   return note||'Theo lịch';
 }
@@ -1890,8 +1901,8 @@ function showHouseReviewPanel(n, query='', period='range', showList=false, selec
   const to=rangeTo||todayKey;
   const validRange=!!from&&!!to&&from<=to;
   const inRange=item=>{const date=String(item.date||'').slice(0,10);return validRange&&date>=from&&date<=to;};
-  const countRange=all.reduce((sum,p)=>sum+personReviewHistory(p).filter(inRange).length,0);
-  const countAll=all.reduce((sum,p)=>sum+personReviewHistory(p).length,0);
+  const countRange=countUniquePersonReviewDays(all.flatMap(p=>personReviewHistory(p).filter(inRange).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))));
+  const countAll=countUniquePersonReviewDays(all.flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))));
   const list=q?all.filter(p=>String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q)):all;
   const filteredList=list.map(p=>({...p,_reviewHistory:personReviewHistory(p).filter(item=>selectedDate?String(item.date||'').slice(0,10)===selectedDate:(period==='all'?true:inRange(item)))})).filter(p=>p._reviewHistory.length>0);
   host.innerHTML=`<div class="census-panel" style="margin-top:12px">
@@ -1906,7 +1917,7 @@ function showHouseReviewPanel(n, query='', period='range', showList=false, selec
       <b style="display:block;font-size:16px;margin-bottom:4px">📊 THỐNG KÊ TÁI KHÁM RIÊNG — ${house}</b>
       <div style="font-size:13px;color:#475569;margin-bottom:8px">Chọn khoảng ngày dương lịch để xem số liệu của riêng ${house}.</div>
       <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px"><div><label for="houseReviewFrom"><b>Từ ngày:</b></label><input id="houseReviewFrom" type="date" value="${esc(from)}" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px"></div><div><label for="houseReviewTo"><b>Đến ngày:</b></label><input id="houseReviewTo" type="date" value="${esc(to)}" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px"></div><button type="button" class="btn blue" onclick="showHouseReviewPanel(${n},'', 'range', true, '', $('houseReviewFrom').value, $('houseReviewTo').value)">Xem thống kê</button></div>
-      <div class="notice" style="margin-top:8px">${validRange?`Thống kê từ <b>${esc(formatDateVN(from))}</b> đến <b>${esc(formatDateVN(to))}</b>: <b>${countRange}</b> lượt tái khám.`:'Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).' } <span> · Tổng lịch đã ghi nhận: <b>${countAll}</b> lượt.</span></div>
+      <div class="notice" style="margin-top:8px">${validRange?`Thống kê từ <b>${esc(formatDateVN(from))}</b> đến <b>${esc(formatDateVN(to))}</b>: <b>${countRange}</b> ngày tái khám.`:'Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).' } <span> · Tổng số ngày tái khám đã ghi nhận: <b>${countAll}</b> ngày.</span></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;padding:10px;border:1px solid #cbd5e1;border-radius:9px">
       <b style="width:100%">📤 Xuất lịch tái khám — ${house}</b>
@@ -1977,40 +1988,85 @@ function editPersonReview(personId,reviewId,n){
   host.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 async function updatePersonReview(e,personId,reviewId,n){
-  e.preventDefault();if(!isAdmin()){alert('Chỉ ADMIN mới được sửa lịch tái khám.');return;}
-  const form=e.target;const date=form.elements.reviewDate?.value;const status=form.elements.reviewStatus?.value;const userNote=(form.elements.reviewNote?.value||'').trim();
+  e.preventDefault();
+  if(!isAdmin()){alert('Chỉ ADMIN mới được sửa lịch tái khám.');return;}
+  const form=e.target;
+  const submitBtn=form.querySelector('button[type="submit"]');
+  const date=form.elements.reviewDate?.value;
+  const status=form.elements.reviewStatus?.value;
+  const userNote=(form.elements.reviewNote?.value||'').trim();
   if(!date||!status){alert('Vui lòng nhập ngày khám và tình trạng khám.');return;}
-  const note='['+status+']'+(userNote?' '+userNote:'');const query=$('censusContent').querySelector('.house-search')?.value||'';
+  const note='['+status+']'+(userNote?' '+userNote:'');
+  const query=$('censusContent').querySelector('.house-search')?.value||'';
+  if(submitBtn){submitBtn.disabled=true;submitBtn.textContent='Đang cập nhật…';}
   rememberPersonEditReturnState();
   try{
-    const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId),{method:'PATCH',headers:headers({'Prefer':'return=minimal','Content-Type':'application/json'}),body:JSON.stringify({review_date:date,note})});
-    if(!r.ok)throw new Error(await r.text());
-    const person=people.find(x=>String(x.id)===String(personId));
-    const review=person?.lichTaiKham?.find(x=>String(x.id)===String(reviewId));
-    if(review){review.date=date;review.note=note;}
-    renderCensusHouse(n,query);showHouseReviewPanel(n);personEditReturnState=null;
-    alert('Đã cập nhật lượt tái khám. Các lượt khác và hồ sơ đối tượng được giữ nguyên.');
-  }catch(err){personEditReturnState=null;showCloudError(err)}
+    const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId),{
+      method:'PATCH',
+      headers:headers({'Prefer':'return=representation','Content-Type':'application/json'}),
+      body:JSON.stringify({review_date:date,note})
+    });
+    const raw=await r.text();
+    if(!r.ok)throw new Error(raw||('HTTP '+r.status));
+    let updated=[];
+    try{updated=raw?JSON.parse(raw):[];}catch(_){throw new Error('Máy chủ trả về dữ liệu cập nhật không hợp lệ: '+raw);}
+    if(!Array.isArray(updated)||updated.length===0){
+      throw new Error('Máy chủ không xác nhận đã cập nhật lượt tái khám. Có thể mã lượt không còn tồn tại hoặc tài khoản không có quyền UPDATE/RLS trên bảng lich_tai_kham.');
+    }
+    await loadReviews();
+    renderCensusHouse(n,query);
+    showHouseReviewPanel(n);
+    personEditReturnState=null;
+    alert('Đã cập nhật lượt tái khám và xác nhận dữ liệu từ máy chủ. Các lượt khác và hồ sơ đối tượng được giữ nguyên.');
+  }catch(err){
+    personEditReturnState=null;
+    showCloudError(err);
+  }finally{
+    if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='Lưu chỉnh sửa';}
+  }
 }
 
-async function savePersonReview(e,n,id){if(isViewer()){alert('Tài khoản người xem chỉ được xem.');return;}
+async function savePersonReview(e,n,id){
+  if(isViewer()){alert('Tài khoản người xem chỉ được xem.');return;}
   e.preventDefault();
-  const p=people.find(x=>String(x.id)===String(id));if(!p)return;
+  const p=people.find(x=>String(x.id)===String(id));
+  if(!p){alert('Không tìm thấy hồ sơ đối tượng. Vui lòng tải lại danh sách.');return;}
   if(isManager()&&!canManagePerson(p)){alert('Bạn không có quyền nhập lịch tái khám ngoài phạm vi được giao.');return;}
   const house='Nhà '+n;
-  if(String(p.nha||'').trim()!==house||currentLocation(p)!=='Khu'){alert('Đối tượng không còn ở '+house+'. Vui lòng tải lại danh sách.');return;}
-  const form=e.target;const date=form.elements.reviewDate.value;const status=form.elements.reviewStatus.value;const userNote=form.elements.reviewNote.value.trim();const note='['+status+']'+(userNote?' '+userNote:'');
+  if(String(p.nha||'').trim()!==house||currentLocation(p)!=='Khu'){
+    alert('Đối tượng không còn ở '+house+'. Vui lòng tải lại danh sách.');return;
+  }
+  const form=e.target;
+  const date=form.elements.reviewDate?.value;
+  const status=form.elements.reviewStatus?.value;
+  const userNote=(form.elements.reviewNote?.value||'').trim();
   if(!date){alert('Vui lòng nhập ngày khám.');return;}
   if(!status){alert('Vui lòng chọn tình trạng khám.');return;}
+  const note='['+status+']'+(userNote?' '+userNote:'');
+  const submitBtn=form.querySelector('button[type="submit"]');
+  if(submitBtn){submitBtn.disabled=true;submitBtn.textContent='Đang lưu…';}
   try{
-    const r=await api('lich_tai_kham',{method:'POST',headers:headers({'Prefer':'return=representation','Content-Type':'application/json'}),body:JSON.stringify({person_id:String(p.id),review_date:date,note,created_by:managerSession?.user?.id||null})});
-    if(!r.ok)throw new Error(await r.text());
-    const savedRows=await r.json();const saved=savedRows?.[0];
-    if(saved){p.lichTaiKham=Array.isArray(p.lichTaiKham)?p.lichTaiKham:[];p.lichTaiKham.unshift({id:saved.id,date:saved.review_date,note:saved.note||note,createdAt:saved.created_at||''});}
+    const r=await api('lich_tai_kham',{
+      method:'POST',
+      headers:headers({'Prefer':'return=representation','Content-Type':'application/json'}),
+      body:JSON.stringify({person_id:String(p.id),review_date:date,note,created_by:managerSession?.user?.id||null})
+    });
+    const raw=await r.text();
+    if(!r.ok)throw new Error(raw||('HTTP '+r.status));
+    let savedRows=[];
+    try{savedRows=raw?JSON.parse(raw):[];}catch(_){throw new Error('Máy chủ trả về dữ liệu lưu không hợp lệ: '+raw);}
+    if(!Array.isArray(savedRows)||savedRows.length===0||savedRows[0]?.id===undefined||savedRows[0]?.id===null){
+      throw new Error('Máy chủ chưa trả về mã lượt tái khám đã lưu. Không thể xác nhận dữ liệu đã được ghi vào bảng lich_tai_kham. Kiểm tra quyền INSERT/RLS và cấu trúc bảng trên Supabase.');
+    }
+    await loadReviews();
     renderCensusHouse(n,$('censusContent').querySelector('.house-search')?.value||'');
     showHouseReviewPanel(n);
-    alert('Đã lưu lượt tái khám. Hồ sơ đối tượng chính không bị chỉnh sửa.');
-  }catch(err){showCloudError(err)}
+    alert('Đã lưu lượt tái khám và xác nhận dữ liệu từ máy chủ. Hồ sơ đối tượng chính không bị chỉnh sửa.');
+  }catch(err){
+    showCloudError(err);
+  }finally{
+    if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='＋ Lưu lượt khám';}
+  }
 }
 async function deletePersonReview(id,reviewId,n){
   if(!isAdmin()){alert('Chỉ ADMIN mới được xóa lịch tái khám.');return;}
@@ -2018,13 +2074,26 @@ async function deletePersonReview(id,reviewId,n){
   const query=$('censusContent').querySelector('.house-search')?.value||'';
   rememberPersonEditReturnState();
   try{
-    const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
-    if(!r.ok)throw new Error(await r.text());
-    const person=people.find(x=>String(x.id)===String(id));
-    if(person)person.lichTaiKham=(person.lichTaiKham||[]).filter(x=>String(x.id)!==String(reviewId));
-    renderCensusHouse(n,query);showHouseReviewPanel(n);personEditReturnState=null;
-    alert('Đã xóa lượt tái khám đã chọn.');
-  }catch(err){personEditReturnState=null;showCloudError(err)}
+    const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId),{
+      method:'DELETE',
+      headers:headers({'Prefer':'return=representation'})
+    });
+    const raw=await r.text();
+    if(!r.ok)throw new Error(raw||('HTTP '+r.status));
+    let deleted=[];
+    try{deleted=raw?JSON.parse(raw):[];}catch(_){throw new Error('Máy chủ trả về dữ liệu xóa không hợp lệ: '+raw);}
+    if(!Array.isArray(deleted)||deleted.length===0){
+      throw new Error('Máy chủ không xác nhận đã xóa lượt tái khám. Kiểm tra mã lượt và quyền DELETE/RLS trên bảng lich_tai_kham.');
+    }
+    await loadReviews();
+    renderCensusHouse(n,query);
+    showHouseReviewPanel(n);
+    personEditReturnState=null;
+    alert('Đã xóa lượt tái khám đã được máy chủ xác nhận.');
+  }catch(err){
+    personEditReturnState=null;
+    showCloudError(err);
+  }
 }
 
 function exportSchedule(scope,id,format,action="preview"){
