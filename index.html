@@ -710,7 +710,51 @@ function getQuanHeValue(){return $('quanHe')?.value==='Khác'?($('quanHeKhac')?.
 function setQuanHeValue(value){const known=['','Cha','Mẹ','Con','Cháu','Anh/Chị/Em','Người giám hộ','Khác'];const v=String(value||'');if(known.includes(v)){$('quanHe').value=v;$('quanHeKhac').value=''}else{$('quanHe').value='Khác';$('quanHeKhac').value=v}toggleQuanHeKhac()}
 function toggleCccd(){let yes=$('coCccd').value==='Có';$('cccdWrap').style.display=yes?'block':'none';$('cccd').required=yes}
 function toggleStatusDate(){let v=$('trangthai').value;let yes=v!=='Đang quản lý';$('statusDateWrap').style.display=yes?'block':'none';$('statusDateLabel').textContent=v==='Hồi gia'?'Ngày hồi gia':v==='Tử vong'?'Ngày tử vong':'Ngày chuyển đi'}
-function previewPhoto(e){let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{photoData=r.result;$('preview').src=photoData};r.readAsDataURL(f)}
+async function previewPhoto(e){
+  const input=e.target, f=input.files?.[0];if(!f)return;
+  const preview=$('preview');
+  let status=document.getElementById('photoCompressStatus');
+  if(!status&&preview){status=document.createElement('small');status.id='photoCompressStatus';status.style.cssText='display:block;color:#64748b;margin-top:5px';preview.parentElement?.appendChild(status);}
+  if(status)status.textContent='Đang tối ưu ảnh...';
+  try{
+    const objectUrl=URL.createObjectURL(f);
+    try{
+      const img=new Image();
+      await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Không đọc được ảnh đã chọn.'));img.src=objectUrl;});
+      const maxSide=800, scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+      canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+      const ctx=canvas.getContext('2d',{alpha:false});
+      ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      let blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.62));
+      if(!blob)throw new Error('Không thể nén ảnh trên thiết bị này.');
+      // Hạ chất lượng thêm nếu ảnh vẫn lớn, giúp giảm thời gian gửi lên máy chủ.
+      if(blob.size>180*1024)blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.48));
+      if(blob.size>260*1024){
+        const smaller=document.createElement('canvas');
+        const factor=Math.sqrt((220*1024)/blob.size);
+        smaller.width=Math.max(1,Math.round(canvas.width*factor));
+        smaller.height=Math.max(1,Math.round(canvas.height*factor));
+        smaller.getContext('2d',{alpha:false}).drawImage(canvas,0,0,smaller.width,smaller.height);
+        blob=await new Promise(resolve=>smaller.toBlob(resolve,'image/jpeg',0.48));
+      }
+      photoData=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Không đọc được ảnh sau khi nén.'));reader.readAsDataURL(blob);
+      });
+      if(preview)preview.src=photoData;
+      const kb=Math.max(1,Math.round(blob.size/1024)),oldKb=Math.max(1,Math.round(f.size/1024));
+      if(status)status.textContent=`Ảnh đã tối ưu: ${oldKb} KB → ${kb} KB.`;
+    }finally{URL.revokeObjectURL(objectUrl);}
+  }catch(err){
+    if(status)status.textContent='Không xử lý được ảnh: '+(err.message||'Vui lòng chọn ảnh khác.');
+    alert('Không thể xử lý ảnh. Vui lòng thử chụp lại hoặc chọn ảnh khác.');
+  }finally{
+    // Cho phép chọn lại chính ảnh đó nếu cần.
+    input.value='';
+  }
+}
 
 function updateAuthUI(){
   const auth=!!managerSession?.access_token && !!managerPermission && managerPermission.trang_thai===true;
