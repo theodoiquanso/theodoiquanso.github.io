@@ -937,11 +937,30 @@ async function loadDx(){
 }
 
 async function loadReviews(){
-  const r=await api('lich_tai_kham?select=id,person_id,review_date,note,created_at&order=review_date.desc');
-  if(!r.ok)throw new Error(await r.text());
-  const rows=await r.json();const byPerson={};
+  // Đọc toàn bộ lịch tái khám theo từng trang để không bị giới hạn mặc định 1.000 dòng của PostgREST.
+  const rows=[];const pageSize=500;let offset=0;
+  while(true){
+    const r=await api(`lich_tai_kham?select=id,person_id,review_date,note,created_at&order=review_date.desc&limit=${pageSize}`,{headers:{'Range':`${offset}-${offset+pageSize-1}`}});
+    if(!r.ok)throw new Error(await r.text());
+    const page=await r.json();
+    if(!Array.isArray(page))throw new Error('Dữ liệu lịch tái khám từ Supabase không đúng định dạng.');
+    rows.push(...page);
+    if(page.length<pageSize)break;
+    offset+=pageSize;
+  }
+  const byPerson={};
   rows.forEach(x=>(byPerson[String(x.person_id)]??=[]).push({id:x.id,date:x.review_date,note:x.note||'',createdAt:x.created_at||''}));
-  people.forEach(p=>{const legacy=Array.isArray(p.lichTaiKham)?p.lichTaiKham:[];const current=byPerson[String(p.id)]||[];p.lichTaiKham=[...current,...legacy];if(p.lichTaiKham.length){p.ngayTaiKham=p.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||p.ngayTaiKham||'';}});
+  people.forEach(p=>{
+    const legacy=Array.isArray(p.lichTaiKham)?p.lichTaiKham:[];
+    const current=byPerson[String(p.id)]||[];
+    // Ưu tiên dữ liệu hiện có trên bảng lich_tai_kham; chỉ giữ bản cũ không có ID để tương thích hồ sơ trước đây.
+    const currentIds=new Set(current.filter(x=>x.id!==undefined&&x.id!==null).map(x=>String(x.id)));
+    const legacyOnly=legacy.filter(x=>x.id===undefined||x.id===null||!currentIds.has(String(x.id)));
+    p.lichTaiKham=[...current,...legacyOnly];
+    if(p.lichTaiKham.length){
+      p.ngayTaiKham=p.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||p.ngayTaiKham||'';
+    }
+  });
 }
 
 function toggleOtherDisease(){const check=$('thuocKhac'),wrap=$('thuocKhacWrap'),text=$('thuocKhacText');const on=check?!!check.checked:!!(text&&text.value.trim());if(wrap)wrap.style.display=on?'block':'none';if(text)text.required=!!check&&on;if(check&&!on&&text)text.value='';}
@@ -1763,7 +1782,13 @@ function uniquePersonReviewDayRows(rows){
 function countUniquePersonReviewDays(rows){return uniquePersonReviewDayRows(rows).length;}
 function reviewCountToday(list){const today=localDateKeyReview();const rows=list.filter(isCurrentlyManaged).flatMap(p=>personReviewHistory(p).filter(item=>String(item.date||'').slice(0,10)===today).map(item=>({p,item,day:today})));return countUniquePersonReviewDays(rows);}
 function censusListForZone(z){const a=people.filter(isCurrentlyManaged);if(z==='medical')return a.filter(p=>currentLocation(p)==='Phòng Y tế');return a.filter(p=>currentLocation(p)==='Khu'&&censusZoneForHouse(p.nha)===z);}
-function showKhuPanel(){closeOtherMainSections('censusPanel');const panel=$('censusPanel');panel.style.display='block';renderCensusHome();panel.scrollIntoView({behavior:'smooth',block:'start'});}
+async function showKhuPanel(){
+ closeOtherMainSections('censusPanel');const panel=$('censusPanel');panel.style.display='block';
+ const pop=$('censusContent');if(pop)pop.innerHTML='<div class="notice">Đang cập nhật lịch tái khám…</div>';
+ panel.scrollIntoView({behavior:'smooth',block:'start'});
+ try{await loadReviews();}catch(err){console.error('Không cập nhật được lịch tái khám khi mở Khu:',err);}
+ renderCensusHome();
+}
 function hideCensusPanel(){$('censusPanel').style.display='none';const mainList=$('mainPeopleTableWrap');if(mainList)mainList.style.display='';}
 function returnMainInterface(){
   ['dutyPanel','censusPanel','dashboardList','dailyReportPanel'].forEach(id=>{const el=$(id);if(el)el.style.display='none';});
@@ -1782,8 +1807,10 @@ function showCensusZoneFilter(z,key){
  const list=key==='all'?all:all.filter(filters[key]||(()=>true));const labels={all:'Đang quản lý',male:'Nam',female:'Nữ',over60:'Từ 60 tuổi trở lên',under60:'Dưới 60 tuổi',disabled:'Khuyết tật'};const pop=$('censusContent');
  pop.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn gray" onclick="renderCensusHome()">← Quay lại màn trước</button></div><h3>${censusZoneName(z)} — ${labels[key]||'Danh sách'} (${list.length})</h3>${censusPeopleHtml(list)}`;
 }
-function showCensusZoneSchedule(z){
+async function showCensusZoneSchedule(z){
  const pop=$('censusContent');if(!pop)return;
+ pop.innerHTML='<div class="notice">Đang cập nhật lịch tái khám…</div>';
+ try{await loadReviews();}catch(err){console.error('Không cập nhật được lịch tái khám của Khu:',err);}
  const houses=z==='elderly'?[1,2,3,4]:z==='homeless'?[5,6,7,8,9]:z==='mental'?[10,11]:[];
  pop.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn gray" onclick="renderCensusHome()">← Quay lại màn trước</button></div><h3>📅 Lịch tái khám — ${censusZoneName(z)}</h3>
  <div class="notice">Số liệu trên màn hình chính là số lượt tái khám trong ngày hôm nay. Chọn một kỳ thống kê bên dưới để xem số liệu phục vụ báo cáo.</div>
@@ -1921,9 +1948,11 @@ function reviewNoteDisplay(item){
   if(match)return match[1]+(note.slice(match[0].length).trim()?' — '+note.slice(match[0].length).trim():'');
   return note||'Theo lịch';
 }
-function showHouseReviewPanel(n, query='', period='range', showList=false, selectedDate='', rangeFrom='', rangeTo=''){
+async function showHouseReviewPanel(n, query='', period='range', showList=false, selectedDate='', rangeFrom='', rangeTo=''){
+  const host=$('houseReviewPanel');if(!host)return;
+  host.innerHTML='<div class="notice">Đang cập nhật lịch tái khám…</div>';
+  try{await loadReviews();}catch(err){console.error('Không cập nhật được lịch tái khám Nhà '+n+':',err);}
   const house='Nhà '+n;
-  const host=$('houseReviewPanel'); if(!host)return;
   const all=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house);
   const q=String(query||'').trim().toLocaleLowerCase('vi');
   const todayKey=localDateKeyReview();
