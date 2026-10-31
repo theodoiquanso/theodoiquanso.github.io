@@ -1360,11 +1360,19 @@ async function savePerson(e){
     p.lichTaiKham=old?.lichTaiKham||[];
     const savedIndex=people.findIndex(x=>String(x.id)===String(p.id));
     if(savedIndex>=0)people[savedIndex]=p;else people.unshift(p);
+    // Cập nhật cache cùng phiên ngay sau khi máy chủ xác nhận lưu thành công.
+    try{
+      const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
+      localStorage.setItem(cacheKey,JSON.stringify(people));
+    }catch(cacheErr){console.warn('Không cập nhật được bộ nhớ tạm sau khi lưu:',cacheErr)}
+    // Lưu trạng thái trang trước khi restore; HTML snapshot cũ không tự đổi theo dữ liệu mới.
+    const savedReturnState=personEditReturnState;
     closeModal('personModal');
-    // Không render về giao diện chung trước khi hiện thông báo; restore sẽ render và khôi phục đúng trang cũ.
     if(saveStatus){saveStatus.style.background='#ecfdf5';saveStatus.style.color='#047857';saveStatus.textContent='✓ Lưu thành công.';}
     alert('Lưu thành công.');
     restorePersonEditReturnState();
+    // Dựng lại danh sách Nhà/Khu/Y tế/Bệnh viện và thống kê đang mở từ people mới.
+    refreshDashboardAfterDelete(savedReturnState);
     if(returnDetailId&&people.some(x=>String(x.id)===String(returnDetailId)))viewPerson(returnDetailId);
   }catch(err){
     if(saveStatus){saveStatus.style.display='block';saveStatus.style.background='#fef2f2';saveStatus.style.color='#b91c1c';saveStatus.textContent='✕ Lưu thất bại: '+(err?.message||String(err));}
