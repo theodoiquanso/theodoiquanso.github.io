@@ -542,7 +542,7 @@ function isMealUploader(){return !!managerSession?.access_token && !!managerPerm
 function canUploadMeal(){return isAdmin()||isMealUploader();}
 function isManager(){return !!managerSession?.access_token && (isAdmin() || (!!managerPermission && managerPermission.trang_thai===true && ['quan_ly','nguoi_dung','manager','house_manager','y_te','medical'].includes(getUserRole())));}
 function canViewPerson(p){if(!p)return false;if(isAdmin())return true;const scope=normalizeHouseScope(getAssignedHouse());if(isViewer()){if(!scope)return false;if(['toàn trung tâm','toan trung tam','toàn bộ','all'].includes(String(scope).trim().toLocaleLowerCase('vi-VN')))return true;return normalizeHouseScope(p.nha)===scope || (scope==='y tế' && ['phòng y tế','bệnh viện'].includes(String(currentLocation(p)||'').trim().toLocaleLowerCase('vi-VN')));}return canManagePerson(p)||isManager();}
-function isMedicalAccount(){return ['Y tế','y_te','medical'].includes(getAssignedHouse()) || ['y_te','medical'].includes(getUserRole());}
+function isMedicalAccount(){return normalizeHouseScope(getAssignedHouse())==='y tế' || ['y_te','medical'].includes(String(getUserRole()||'').trim().toLowerCase());}
 function normalizeHouseScope(value){
   const v=String(value||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('vi-VN');
   if(!v)return '';
@@ -774,7 +774,7 @@ function updateAuthUI(){
   if($('importExcelBtn'))$('importExcelBtn').style.display=excelAllowed?'inline-block':'none';
   if($('downloadImportTemplateBtn'))$('downloadImportTemplateBtn').style.display=excelAllowed?'inline-block':'none';
   if($('adminImportExportWrap'))$('adminImportExportWrap').style.display=isAdmin()?'flex':'none';
-  if($('medicalAddPersonBtn'))$('medicalAddPersonBtn').style.display=(auth&&isManager()&&isMedicalAccount())?'inline-block':'none';
+  if($('medicalAddPersonBtn'))$('medicalAddPersonBtn').style.display=(auth&&(isAdmin()||isManager())&&isMedicalAccount())?'inline-block':'none';
 }
 async function activateAuthenticatedApp(){
   updateAuthUI();
@@ -907,13 +907,19 @@ async function loadPeople(){
       return item;
     });
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không lưu được dữ liệu tạm:',e)}
+    // Chờ tải xong lịch khám đột xuất và lịch tái khám trước khi kết thúc đồng bộ hồ sơ.
+    // Tránh giao diện Khu/nhà mở ra khi mới có dữ liệu cache cũ (ví dụ 69 lượt),
+    // rồi chỉ cập nhật sau một thao tác thêm/sửa hồ sơ.
+    const relatedResults=await Promise.allSettled([loadDx(),loadReviews()]);
+    const reviewResult=relatedResults[1];
+    if(reviewResult.status==='rejected'){
+      console.error('Không tải được lịch tái khám khi đồng bộ hồ sơ:',reviewResult.reason);
+      const notice=$('authNotice');
+      if(notice){notice.textContent='Chưa tải được lịch tái khám mới nhất từ máy chủ. Vui lòng thử tải lại; dữ liệu hồ sơ không bị thay đổi.';notice.style.display='block';}
+    }
+    const dxResult=relatedResults[0];
+    if(dxResult.status==='rejected')console.warn('Không tải được lịch khám đột xuất lúc đồng bộ hồ sơ:',dxResult.reason);
     render();
-    Promise.allSettled([loadDx(),loadReviews()]).then(results=>{
-      results.forEach((result,index)=>{
-        if(result.status==='rejected')console.warn(index===0?'Không tải được lịch khám đột xuất lúc khởi động:':'Không tải được lịch tái khám lúc khởi động:',result.reason);
-      });
-      render();
-    });
   }catch(e){
     console.error('Không đồng bộ được danh sách hồ sơ từ Supabase:',e);
     if(hadCache){
@@ -1406,13 +1412,15 @@ async function delPerson(id){
     if(!Array.isArray(deleted)||!deleted.some(x=>String(x.id)===String(id))){
       throw new Error('Supabase không xác nhận đã xóa hồ sơ này. Có thể tài khoản chưa đủ quyền xóa hoặc hồ sơ không còn khớp dữ liệu.');
     }
-    // Xóa bản ghi khỏi bộ nhớ và cache ngay sau khi máy chủ xác nhận, tránh danh sách cũ hiện lại.
+    // Supabase đã trả về đúng ID bị xóa: cập nhật bộ nhớ/cache tại chỗ.
+    // Không gọi loadPeople() ngay sau DELETE vì một lượt đọc lại tức thời có thể
+    // nhận dữ liệu chưa đồng bộ và đưa hồ sơ vừa xóa trở lại giao diện.
     people=people.filter(x=>String(x.id)!==String(id));
     const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không cập nhật được cache sau khi xóa:',e)}
+    restorePersonEditReturnState();
     render();
-    await loadPeople();
-    restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
+    refreshDashboardAfterDelete(prior);
     alert('Đã xóa hồ sơ đối tượng.');
   }catch(err){personEditReturnState=null;showCloudError(err)}
 }
