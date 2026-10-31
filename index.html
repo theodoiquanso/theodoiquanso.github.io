@@ -354,7 +354,8 @@ body.meal-only-authenticated #mealOnlyBar{display:flex}
 <div class="field"><label>Trạng thái</label><select id="trangthai" onchange="toggleStatusDate()"><option>Đang quản lý</option><option>Hồi gia</option><option>Tử vong</option><option>Chuyển đi nơi khác</option></select></div>
 <div class="field" id="statusDateWrap" style="display:none"><label id="statusDateLabel">Ngày</label><input id="statusDate" type="date"></div>
 </div>
-<div class="actions"><button type="button" class="btn gray" onclick="closeModal('personModal')">Hủy</button><button class="btn green">Lưu đối tượng</button></div>
+<div id="personSaveStatus" role="status" aria-live="polite" style="display:none;margin:10px 0;padding:10px;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-weight:600"></div>
+<div class="actions"><button type="button" class="btn gray" onclick="closeModal('personModal')">Hủy</button><button id="savePersonBtn" class="btn green" type="submit">Lưu đối tượng</button></div>
 </form>
 </div></div>
 
@@ -990,6 +991,7 @@ async function openPerson(id=null){
   // Ghi nhớ trang hiện tại khi mở cả form thêm mới lẫn form sửa.
   rememberPersonEditReturnState();
   resetPersonForm();
+  if($('personSaveStatus')){$('personSaveStatus').style.display='none';$('personSaveStatus').textContent='';}
   if(!id&&!isManager()){
     $('addRecordType').value='new';
     $('addRecordType').disabled=true;
@@ -1346,6 +1348,9 @@ async function savePerson(e){
       appendDailyEvent(p,makeDailyEvent({type:'transfer',title:'Chuyển vị trí / nhà / khu',p,from:oldPlace,to:newPlace,reason:'Cập nhật vị trí trong hồ sơ',dateTime:eventNow}));
     }
   }
+  const saveBtn=$('savePersonBtn'),saveStatus=$('personSaveStatus'),saveBtnText=saveBtn?.textContent||'Lưu đối tượng';
+  if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Đang lưu...';saveBtn.style.opacity='.7';}
+  if(saveStatus){saveStatus.style.display='block';saveStatus.style.background='#eff6ff';saveStatus.style.color='#1d4ed8';saveStatus.textContent='Đang gửi hồ sơ lên máy chủ. Vui lòng không đóng cửa sổ...';}
   try{
     const r=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:p.id,data:p,updated_at:new Date().toISOString()})});
     if(!r.ok)throw new Error(await r.text());
@@ -1357,10 +1362,16 @@ async function savePerson(e){
     if(savedIndex>=0)people[savedIndex]=p;else people.unshift(p);
     closeModal('personModal');
     // Không render về giao diện chung trước khi hiện thông báo; restore sẽ render và khôi phục đúng trang cũ.
+    if(saveStatus){saveStatus.style.background='#ecfdf5';saveStatus.style.color='#047857';saveStatus.textContent='✓ Lưu thành công.';}
     alert('Lưu thành công.');
     restorePersonEditReturnState();
     if(returnDetailId&&people.some(x=>String(x.id)===String(returnDetailId)))viewPerson(returnDetailId);
-  }catch(err){showCloudError(err)}
+  }catch(err){
+    if(saveStatus){saveStatus.style.display='block';saveStatus.style.background='#fef2f2';saveStatus.style.color='#b91c1c';saveStatus.textContent='✕ Lưu thất bại: '+(err?.message||String(err));}
+    showCloudError(err);
+  }finally{
+    if(saveBtn){saveBtn.disabled=false;saveBtn.textContent=saveBtnText;saveBtn.style.opacity='1';}
+  }
 }
 async function delPerson(id){
   if(!isAdmin()){alert('Chỉ ADMIN mới được xóa hồ sơ đối tượng.');return;}
