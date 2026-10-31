@@ -885,29 +885,41 @@ async function loadPeople(){
       if(Array.isArray(parsed)){people=parsed;render();}
     }
   }catch(e){console.warn('Không đọc được dữ liệu lưu tạm:',e)}
+  const hadCache=Array.isArray(people)&&people.length>0;
   try{
-    const r=await api('so_tay_suc_khoe_tom_tat?select=id,data,updated_at&order=updated_at.desc');
-    if(!r.ok)throw new Error(await r.text());
-    const rows=await r.json();
-    // View tom_tat không truyền ảnh base64 trong danh sách, giúp giảm mạnh dung lượng tải.
-    // Giữ ảnh từ cache nếu đã có; ảnh của hồ sơ chưa có cache sẽ tải riêng khi mở sửa.
+    // Tải view theo từng trang nhỏ để giảm nguy cơ statement timeout khi vừa mở phần mềm.
+    // View không truyền ảnh base64; ảnh đã có trong cache được giữ lại.
+    const rows=[]; const pageSize=150; let offset=0;
+    while(true){
+      const r=await api(`so_tay_suc_khoe_tom_tat?select=id,data,updated_at&limit=${pageSize}`,{headers:{'Range':`${offset}-${offset+pageSize-1}`}});
+      if(!r.ok)throw new Error(await r.text());
+      const page=await r.json();
+      if(!Array.isArray(page))throw new Error('Dữ liệu danh sách từ Supabase không đúng định dạng.');
+      rows.push(...page);
+      if(page.length<pageSize)break;
+      offset+=pageSize;
+    }
     const oldById=new Map(people.map(p=>[String(p.id),p]));
     people=rows.map(x=>{
-      const p=Object.assign({id:x.id},x.data||{});
-      const old=oldById.get(String(x.id));
-      if(old && Object.prototype.hasOwnProperty.call(old,'photo')) p.photo=old.photo;
-      return p;
+      const item=Object.assign({id:x.id},x.data||{});
+      const previous=oldById.get(String(x.id));
+      if(previous && Object.prototype.hasOwnProperty.call(previous,'photo')) item.photo=previous.photo;
+      return item;
     });
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không lưu được dữ liệu tạm:',e)}
     render();
     Promise.allSettled([loadDx(),loadReviews()]).then(results=>{
-      const failed=results.find(x=>x.status==='rejected');
+      results.forEach((result,index)=>{
+        if(result.status==='rejected')console.warn(index===0?'Không tải được lịch khám đột xuất lúc khởi động:':'Không tải được lịch tái khám lúc khởi động:',result.reason);
+      });
       render();
-      if(failed)showCloudError(failed.reason);
     });
   }catch(e){
-    // Nếu mạng lỗi nhưng cache hợp lệ, giữ dữ liệu đã hiển thị và thông báo đồng bộ thất bại.
-    showCloudError(e);
+    console.error('Không đồng bộ được danh sách hồ sơ từ Supabase:',e);
+    if(hadCache){
+      const notice=$('authNotice');
+      if(notice){notice.textContent='Chưa đồng bộ được dữ liệu mới nhất từ máy chủ. Đang hiển thị dữ liệu đã lưu trên thiết bị.';notice.style.display='block';}
+    }else showCloudError(e);
   }
 }
 async function loadDx(){
@@ -1319,7 +1331,7 @@ async function savePerson(e){
   const editingId=$('editId').value;
   if(!isManager()&&(editingId||(($('addRecordType')?.value||'new')!=='new'))){alert('Không đăng nhập thì chỉ được thêm đối tượng tiếp nhận mới; không được sửa hồ sơ hoặc bổ sung hồ sơ cũ.');return;}
   if(editingId&&!canManagePerson(people.find(x=>String(x.id)===String(editingId)))){alert('Bạn chỉ được quản lý hồ sơ thuộc phạm vi được giao.');return;}const id=editingId||uid();
-  const old=people.find(p=>p.id===id);
+  const old=people.find(p=>String(p.id)===String(id));
   const p={id,ma:$('ma').value.trim(),soSo:$('soSo').value.trim(),ten:$('ten').value.trim(),namsinh:$('namsinh').value,gioitinh:$('gioitinh').value,khuyettat:$('khuyettat').value,coCccd:$('coCccd').value,cccd:$('coCccd').value==='Có'?$('cccd').value.trim():'',ngaynhap:$('ngaynhap').value,nha:$('nha').value,diachi:$('diachi').value.trim(),nguoiThan:$('nguoiThan').value.trim(),quanHe:getQuanHeValue(),sdtNguoiThan:$('sdtNguoiThan').value.trim(),vitri:$('vitri').value,phanLoaiSucKhoe:['Sức khỏe ổn định','Cần theo dõi','Cần chăm sóc đặc biệt'].includes($('phanLoaiSucKhoe')?.value)?$('phanLoaiSucKhoe').value:(old?.phanLoaiSucKhoe||'Sức khỏe ổn định'),bhyt:$('bhyt').value.trim(),ngayTaiKham:$('ngayTaiKham').value,khu:old?.khu||'',bvInfo:$('bvInfo').value.trim(),ghiChuChuyen:old?.ghiChuChuyen||'',trangthai:$('trangthai').value,statusDate:$('statusDate').value,photo:photoData||old?.photo||'',locationHistory:old?.locationHistory||[],readmissionHistory:old?.readmissionHistory||[],dienBienHangNgay:old?.dienBienHangNgay||[],updated:new Date().toISOString()};
   const reactivated=!!old&&(old.trangthai==='Hồi gia'||old.trangthai==='Tử vong'||old.trangthai==='Chuyển đi nơi khác')&&p.trangthai==='Đang quản lý';
   if(reactivated){const today=new Date().toISOString().slice(0,10);p.ngaynhap=today;$('ngaynhap').value=today;p.readmissionHistory.push({date:today,fromStatus:old.trangthai||'',toStatus:'Đang quản lý'});p.statusDate='';}
