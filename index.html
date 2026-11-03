@@ -468,7 +468,6 @@ body.meal-only-authenticated #mealOnlyBar{display:flex}
 </div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ================= SUPABASE ================= */
 const SUPABASE_URL = 'https://izsvbljotokmfuknvhcz.supabase.co';
@@ -525,64 +524,6 @@ async function api(path, options={}){
     if(refreshed)response=await send();
   }
   return response;
-}
-
-// Cache dùng chung theo tài khoản và đồng bộ tức thì giữa các màn hình đang mở.
-function persistPeopleCache(){
-  try{
-    const key='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
-    if(managerSession?.user?.id)localStorage.setItem(key,JSON.stringify(people));
-  }catch(err){console.warn('Không cập nhật được cache hồ sơ:',err)}
-}
-let peopleRealtimeChannel=null;
-let realtimeClient=null;
-function stopPeopleRealtime(){
-  if(peopleRealtimeChannel&&realtimeClient){
-    try{realtimeClient.removeChannel(peopleRealtimeChannel)}catch(err){console.warn(err)}
-  }
-  peopleRealtimeChannel=null;realtimeClient=null;
-}
-function startPeopleRealtime(){
-  if(!managerSession?.access_token||!managerPermission?.trang_thai)return;
-  if(!window.supabase?.createClient){console.warn('Chưa tải được thư viện Supabase Realtime.');return;}
-  stopPeopleRealtime();
-  try{
-    realtimeClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
-      auth:{persistSession:false,autoRefreshToken:false},
-      global:{headers:{Authorization:'Bearer '+managerSession.access_token}}
-    });
-    realtimeClient.realtime.setAuth(managerSession.access_token);
-    peopleRealtimeChannel=realtimeClient.channel('btxh-people-live-'+String(managerSession.user?.id||'session'))
-      .on('postgres_changes',{event:'*',schema:'public',table:'so_tay_suc_khoe'},async payload=>{
-        const row=payload.new||payload.old;
-        if(!row?.id)return;
-        if(payload.eventType==='DELETE'){
-          people=people.filter(x=>String(x.id)!==String(row.id));
-          persistPeopleCache();render();return;
-        }
-        // Lấy đúng hồ sơ vừa thay đổi; không tải lại toàn bộ danh sách và lịch sử.
-        try{
-          const r=await api('so_tay_suc_khoe?select=id,data,updated_at&id=eq.'+encodeURIComponent(row.id)+'&limit=1');
-          if(!r.ok)throw new Error(await r.text());
-          const rows=await r.json(),fresh=rows?.[0];
-          if(!fresh)return;
-          const old=people.find(x=>String(x.id)===String(fresh.id));
-          const item=Object.assign({id:fresh.id},fresh.data||{});
-          if(old){
-            item.khamDotXuat=old.khamDotXuat||item.khamDotXuat||[];
-            item.lichTaiKham=old.lichTaiKham||item.lichTaiKham||[];
-            if(old.photo&&!item.photo)item.photo=old.photo;
-            const index=people.findIndex(x=>String(x.id)===String(fresh.id));
-            people[index]=item;
-          }else people.unshift(item);
-          persistPeopleCache();render();
-        }catch(err){console.warn('Không nhận được hồ sơ mới qua Realtime:',err)}
-      })
-      .subscribe(status=>{
-        if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')
-          console.warn('Supabase Realtime chưa kết nối. Kiểm tra publication/RLS của bảng so_tay_suc_khoe.');
-      });
-  }catch(err){console.warn('Không khởi tạo được Supabase Realtime:',err);stopPeopleRealtime()}
 }
 function authApi(path, options={}){return fetch(SUPABASE_URL+'/auth/v1/'+path,Object.assign({headers:{'apikey':SUPABASE_KEY,'Content-Type':'application/json'}},options));}
 function getUserRole(){
@@ -839,7 +780,6 @@ async function activateAuthenticatedApp(){
   updateAuthUI();
   if(!document.body.classList.contains('authenticated'))return;
   render(); renderMeal(); renderDutyPanel();
-  startPeopleRealtime();
   await Promise.allSettled([loadPeople(),loadDutyRosterFromCloud()]);
 }
 async function restoreSession(){
@@ -892,7 +832,7 @@ async function login(e){
     alert('Đăng nhập thành công. Trang chủ đang tải dữ liệu; vui lòng chờ trong giây lát.');
   }catch(err){console.error(err);alert('Đăng nhập thất bại.\n\n'+(err.message||'Kiểm tra tài khoản, mật khẩu và quyền được cấp trong Supabase.'))}
 }
-function logout(){stopPeopleRealtime();
+function logout(){
   // Giữ cache hồ sơ theo từng user trong sessionStorage của tab để lần đăng nhập kế tiếp
   // có thể hiển thị ngay sau khi xác thực quyền; cache chỉ được đọc sau khi đăng nhập thành công.
   // Không dùng cache để cấp quyền hoặc cho phép sửa/xóa khi chưa xác thực.
@@ -913,7 +853,7 @@ function openMealAccountLogin(){
   $('loginModal').querySelector('.notice').textContent='Tài khoản này chỉ được tải/cập nhật thực đơn, không được vào giao diện theo dõi quân số.';$('loginModal').querySelector('.notice').style.display='block';
   $('loginModal').querySelector('.actions').innerHTML='<button type="button" class="btn gray" onclick="closeModal(\'loginModal\')">Hủy</button><button class="btn green">Đăng nhập Thực đơn</button>';openModal('loginModal');
 }
-function logoutMealOnly(){stopPeopleRealtime();managerSession=null;managerPermission=null;localStorage.removeItem(SESSION_KEY);document.body.classList.remove('meal-only-authenticated','authenticated');closeModal('mealModal');updateAuthUI();}
+function logoutMealOnly(){managerSession=null;managerPermission=null;localStorage.removeItem(SESSION_KEY);document.body.classList.remove('meal-only-authenticated','authenticated');closeModal('mealModal');updateAuthUI();}
 function openLogin(){
   document.body.classList.remove('meal-only-authenticated');$('loginRoleChooser').style.display='block';
   $('loginModal').querySelector('h2').textContent='Trang chủ – Chọn tài khoản đăng nhập';$('loginRoleType').value='admin';
@@ -942,7 +882,9 @@ async function loadPeople(){
     }
     if(cached){
       const parsed=JSON.parse(cached);
-      if(Array.isArray(parsed)){people=parsed;render();}
+      // Cache chỉ dùng để giữ ảnh và làm phương án dự phòng; không render quân số từ cache
+      // trước khi tải xong hồ sơ + lượt khám đột xuất từ máy chủ, tránh số liệu nhảy sau F5.
+      if(Array.isArray(parsed)){people=parsed;}
     }
   }catch(e){console.warn('Không đọc được dữ liệu lưu tạm:',e)}
   const hadCache=Array.isArray(people)&&people.length>0;
@@ -975,7 +917,8 @@ async function loadPeople(){
     console.error('Không đồng bộ được danh sách hồ sơ từ Supabase:',e);
     if(hadCache){
       const notice=$('authNotice');
-      if(notice){notice.textContent='Chưa đồng bộ được dữ liệu mới nhất từ máy chủ. Đang hiển thị dữ liệu đã lưu trên thiết bị.';notice.style.display='block';}
+      if(notice){notice.textContent='Chưa đồng bộ được dữ liệu mới nhất từ máy chủ. Đang hiển thị dữ liệu đã lưu trên thiết bị; số liệu có thể chưa phải số mới nhất.';notice.style.display='block';}
+      render();
     }else showCloudError(e);
   }
 }
@@ -1449,7 +1392,10 @@ async function savePerson(e){
     const savedIndex=people.findIndex(x=>String(x.id)===String(p.id));
     if(savedIndex>=0)people[savedIndex]=p;else people.unshift(p);
     // Cập nhật cache cùng phiên ngay sau khi máy chủ xác nhận lưu thành công.
-    persistPeopleCache();
+    try{
+      const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
+      localStorage.setItem(cacheKey,JSON.stringify(people));
+    }catch(cacheErr){console.warn('Không cập nhật được bộ nhớ tạm sau khi lưu:',cacheErr)}
     // Lưu trạng thái trang trước khi restore; HTML snapshot cũ không tự đổi theo dữ liệu mới.
     const savedReturnState=personEditReturnState;
     closeModal('personModal');
@@ -1486,8 +1432,9 @@ async function delPerson(id){
     const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không cập nhật được cache sau khi xóa:',e)}
     restorePersonEditReturnState();
-    render();
     refreshDashboardAfterDelete(prior);
+    // Vẽ lại từ danh sách people đã loại hồ sơ và cache vừa cập nhật.
+    render();
     alert('Đã xóa hồ sơ đối tượng.');
   }catch(err){personEditReturnState=null;showCloudError(err)}
 }
@@ -1521,9 +1468,22 @@ function isCurrentlyManaged(p){
   return status==='đang quản lý'||status==='đang quản lý '||status==='đang quản lý tại trung tâm';
 }
 function currentLocation(p){
-  const dx=(p.khamDotXuat||[]).slice().sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
-  if(dx.length){const latest=decodeDxAction(dx[0].action||'');if(latest.stayed||latest.base==='Cho về khu')return 'Khu';if(latest.base==='Theo dõi y tế')return 'Phòng Y tế';}
-  return p.vitri||'';
+  // Lịch sử chuyển vị trí là mốc xác nhận vị trí hiện tại. Chỉ để lượt khám
+  // đột xuất ghi đè vị trí nếu lượt khám được tạo SAU lần chuyển gần nhất.
+  const transferRows=Array.isArray(p?.locationHistory)?p.locationHistory:[];
+  const latestTransfer=transferRows.reduce((latest,item)=>{
+    const t=Date.parse(item?.date||'');
+    return Number.isFinite(t)&&(!latest||t>latest.time)?{time:t,item}:latest;
+  },null);
+  const dx=(p?.khamDotXuat||[]).slice().sort((a,b)=>Date.parse(b.created_at||0)-Date.parse(a.created_at||0));
+  const latestDx=dx[0];
+  const dxTime=latestDx?Date.parse(latestDx.created_at||0):NaN;
+  if(latestDx&&Number.isFinite(dxTime)&&(!latestTransfer||dxTime>latestTransfer.time)){
+    const latest=decodeDxAction(latestDx.action||'');
+    if(latest.stayed||latest.base==='Cho về khu')return 'Khu';
+    if(latest.base==='Theo dõi y tế')return 'Phòng Y tế';
+  }
+  return p?.vitri||'';
 }
 function locationText(p){const status=p.trangthai||'Đang quản lý';if(status==='Hồi gia'||status==='Tử vong')return status;const v=currentLocation(p);return v==='Khu'?(p.khu||'Khu'):v==='Bệnh viện'?'Bệnh viện':v}
 function meds(p){let a=[];if(p.thuocHA)a.push('Huyết áp');if(p.thuocTT)a.push('Tâm thần');if(p.thuocKhac)a.push(p.thuocKhacText||'Bệnh khác');return a.length?a.join(', '):'—'}
@@ -1738,6 +1698,7 @@ function openTransfer(id){if(isViewer()){alert('Tài khoản người xem chỉ 
 async function saveTransfer(e){
  e.preventDefault();
  const p=people.find(x=>String(x.id)===String($('transferPersonId').value));if(!p)return;
+ const originalPerson=JSON.parse(JSON.stringify(p));
  /* Chuyển vị trí được phép cả khi chưa đăng nhập; quyền sửa hồ sơ khác vẫn giữ nguyên. */
  const dest=$('transferDestination').value;if(!dest){alert('Vui lòng chọn vị trí chuyển đến.');return;}
  if(dest==='Bệnh viện'&&!$('transferHospitalName').value.trim()){alert('Vui lòng nhập tên bệnh viện.');$('transferHospitalName').focus();return;}
@@ -1747,7 +1708,21 @@ async function saveTransfer(e){
  p.ghiChuChuyen=note;p.locationHistory=p.locationHistory||[];const to=label(p);const historyId=uid();p.locationHistory.push({id:historyId,date:now,from,to,by:managerSession?.user?.email||'ADMIN',note});p.updated=now;
  const dailyType=dest==='Chuyển đi nơi khác'?'decrease':'transfer';
  const dailyEvent=makeDailyEvent({type:dailyType,title:dest==='Chuyển đi nơi khác'?'Giảm quân số — chuyển đi nơi khác':'Chuyển vị trí đối tượng',p,from,to,reason:note||'Chuyển theo thao tác quản lý',dateTime:now});dailyEvent.historyId=historyId;p.locationHistory[p.locationHistory.length-1].eventId=dailyEvent.id;appendDailyEvent(p,dailyEvent);
- try{const r=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:p.id,data:p,updated_at:now})});if(!r.ok)throw new Error(await r.text());const idx=people.findIndex(x=>String(x.id)===String(p.id));if(idx>=0)people[idx]=p;persistPeopleCache();closeModal('transferModal');closeModal('detailModal');render();alert('Đã chuyển vị trí và lưu lịch sử vào hồ sơ đối tượng.');}catch(err){showCloudError(err)}
+ try{
+   const r=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:p.id,data:p,updated_at:now})});
+   if(!r.ok)throw new Error(await r.text());
+   // Máy chủ đã xác nhận: cập nhật ngay giao diện và cache của tài khoản hiện tại,
+   // không chờ tải lại toàn bộ hồ sơ và lịch khám.
+   const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
+   try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(cacheErr){console.warn('Không cập nhật được cache sau chuyển vị trí:',cacheErr);}
+   closeModal('transferModal');closeModal('detailModal');render();
+   alert('Đã chuyển vị trí và lưu lịch sử vào hồ sơ đối tượng.');
+ }catch(err){
+   // Không để giao diện giữ vị trí mới nếu máy chủ từ chối lưu.
+   const idx=people.findIndex(x=>String(x.id)===String(p.id));
+   if(idx>=0)people[idx]=originalPerson;
+   render();showCloudError(err);
+ }
 }
 
 function toLocalInputValue(d=new Date()){
