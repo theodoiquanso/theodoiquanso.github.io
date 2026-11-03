@@ -891,7 +891,7 @@ async function loadPeople(){
     // View không truyền ảnh base64; ảnh đã có trong cache được giữ lại.
     const rows=[]; const pageSize=150; let offset=0;
     while(true){
-      const r=await api(`so_tay_suc_khoe_tom_tat?select=id,data,updated_at&limit=${pageSize}`,{headers:{'Range':`${offset}-${offset+pageSize-1}`}});
+      const r=await api(`so_tay_suc_khoe_tom_tat?select=id,data,updated_at&limit=${pageSize}&offset=${offset}`);
       if(!r.ok)throw new Error(await r.text());
       const page=await r.json();
       if(!Array.isArray(page))throw new Error('Dữ liệu danh sách từ Supabase không đúng định dạng.');
@@ -940,7 +940,7 @@ async function loadReviews(){
   // Đọc toàn bộ lịch tái khám theo từng trang để không bị giới hạn mặc định 1.000 dòng của PostgREST.
   const rows=[];const pageSize=500;let offset=0;
   while(true){
-    const r=await api(`lich_tai_kham?select=id,person_id,review_date,note,created_at&order=review_date.desc&limit=${pageSize}`,{headers:{'Range':`${offset}-${offset+pageSize-1}`}});
+    const r=await api(`lich_tai_kham?select=id,person_id,review_date,note,created_at&order=review_date.desc&limit=${pageSize}&offset=${offset}`);
     if(!r.ok)throw new Error(await r.text());
     const page=await r.json();
     if(!Array.isArray(page))throw new Error('Dữ liệu lịch tái khám từ Supabase không đúng định dạng.');
