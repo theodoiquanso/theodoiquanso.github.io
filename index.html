@@ -949,7 +949,7 @@ async function loadReviews(){
     const current=byPerson[String(p.id)]||[];
     // Ưu tiên dữ liệu hiện có trên bảng lich_tai_kham; chỉ giữ bản cũ không có ID để tương thích hồ sơ trước đây.
     const currentIds=new Set(current.filter(x=>x.id!==undefined&&x.id!==null).map(x=>String(x.id)));
-    const legacyOnly=legacy.filter(x=>x.id===undefined||x.id===null||!currentIds.has(String(x.id)));
+    const legacyOnly=legacy.filter(x=>x.id===undefined||x.id===null);
     p.lichTaiKham=[...current,...legacyOnly];
     if(p.lichTaiKham.length){
       p.ngayTaiKham=p.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||p.ngayTaiKham||'';
@@ -1709,8 +1709,11 @@ async function saveTransfer(e){
  const dailyType=dest==='Chuyển đi nơi khác'?'decrease':'transfer';
  const dailyEvent=makeDailyEvent({type:dailyType,title:dest==='Chuyển đi nơi khác'?'Giảm quân số — chuyển đi nơi khác':'Chuyển vị trí đối tượng',p,from,to,reason:note||'Chuyển theo thao tác quản lý',dateTime:now});dailyEvent.historyId=historyId;p.locationHistory[p.locationHistory.length-1].eventId=dailyEvent.id;appendDailyEvent(p,dailyEvent);
  try{
-   const r=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:p.id,data:p,updated_at:now})});
-   if(!r.ok)throw new Error(await r.text());
+   const r=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({id:p.id,data:p,updated_at:now})});
+   const transferRaw=await r.text();
+   if(!r.ok)throw new Error(transferRaw||('HTTP '+r.status));
+   let transferRows=[];try{transferRows=transferRaw?JSON.parse(transferRaw):[];}catch(_){throw new Error('Máy chủ trả dữ liệu chuyển vị trí không hợp lệ: '+transferRaw);}
+   if(!Array.isArray(transferRows)||!transferRows.some(x=>String(x.id)===String(p.id)))throw new Error('Máy chủ chưa xác nhận đã cập nhật hồ sơ chuyển vị trí. Kiểm tra quyền UPDATE/INSERT và RLS của bảng so_tay_suc_khoe.');
    // Máy chủ đã xác nhận: cập nhật ngay giao diện và cache của tài khoản hiện tại,
    // không chờ tải lại toàn bộ hồ sơ và lịch khám.
    const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
@@ -1980,7 +1983,7 @@ function reviewNoteDisplay(item){
 async function showHouseReviewPanel(n, query='', period='range', showList=false, selectedDate='', rangeFrom='', rangeTo=''){
   const host=$('houseReviewPanel');if(!host)return;
   host.innerHTML='<div class="notice">Đang cập nhật lịch tái khám…</div>';
-  try{await loadReviews();}catch(err){console.error('Không cập nhật được lịch tái khám Nhà '+n+':',err);}
+  let reviewLoadError=null;try{await loadReviews();}catch(err){reviewLoadError=err;console.error('Không cập nhật được lịch tái khám Nhà '+n+':',err);}
   const house='Nhà '+n;
   const all=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house);
   const q=String(query||'').trim().toLocaleLowerCase('vi');
@@ -1997,7 +2000,7 @@ async function showHouseReviewPanel(n, query='', period='range', showList=false,
   const list=q?all.filter(p=>String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q)):all;
   const filteredList=list.map(p=>{const history=personReviewHistory(p).filter(item=>selectedDate?String(item.date||'').slice(0,10)===selectedDate:(period==='all'?true:inRange(item)));const seenDays=new Set();return {...p,_reviewHistory:history.filter(item=>{const day=String(item.date||'').slice(0,10);if(!day||seenDays.has(day))return false;seenDays.add(day);return true;})};}).filter(p=>p._reviewHistory.length>0);
   host.innerHTML=`<div class="census-panel" style="margin-top:12px">
-    <div class="census-head"><h3 style="margin:4px 0">📅 Lịch tái khám — ${house}</h3><button class="btn gray" type="button" onclick="$('houseReviewPanel').innerHTML=''">Đóng</button></div>
+    <div class="census-head"><h3 style="margin:4px 0">📅 Lịch tái khám — ${house}</h3><button class="btn gray" type="button" onclick="$('houseReviewPanel').innerHTML=''">Đóng</button></div>${reviewLoadError?`<div class="notice" style="background:#fff7ed;color:#9a3412">Chưa tải được lịch mới nhất từ máy chủ: ${esc(reviewLoadError.message||reviewLoadError)}. Dữ liệu đang hiển thị có thể chưa mới nhất.</div>`:''}
     <div style="margin:10px 0;padding:12px;border:1px solid #86b7a0;background:#f3fbf6;border-radius:9px">
       <b>＋ Nhập tên đối tượng để thêm lượt tái khám</b>
       <input id="houseReviewQuickSearch" type="search" placeholder="Nhập tên hoặc mã đối tượng trong ${house}..." oninput="renderHouseReviewQuickSearch(${n},this.value)" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;margin:8px 0">
@@ -2146,13 +2149,24 @@ async function savePersonReview(e,n,id){
     if(!r.ok)throw new Error(raw||('HTTP '+r.status));
     let savedRows=[];
     try{savedRows=raw?JSON.parse(raw):[];}catch(_){throw new Error('Máy chủ trả về dữ liệu lưu không hợp lệ: '+raw);}
-    if(!Array.isArray(savedRows)||savedRows.length===0||savedRows[0]?.id===undefined||savedRows[0]?.id===null){
-      throw new Error('Máy chủ chưa trả về mã lượt tái khám đã lưu. Không thể xác nhận dữ liệu đã được ghi vào bảng lich_tai_kham. Kiểm tra quyền INSERT/RLS và cấu trúc bảng trên Supabase.');
+    const saved=savedRows?.[0];
+    if(!saved||saved.id===undefined||saved.id===null){
+      throw new Error('Máy chủ chưa trả về mã lượt tái khám. Kiểm tra quyền INSERT/SELECT (RLS) trên bảng lich_tai_kham. Không thể xác nhận dữ liệu đã lưu.');
     }
-    await loadReviews();
+    // Cập nhật ngay bộ nhớ giao diện bằng đúng bản ghi máy chủ vừa trả về.
+    p.lichTaiKham=Array.isArray(p.lichTaiKham)?p.lichTaiKham:[];
+    const savedItem={id:saved.id,date:String(saved.review_date||date).slice(0,10),note:saved.note||note,createdAt:saved.created_at||new Date().toISOString()};
+    if(!p.lichTaiKham.some(x=>String(x.id)===String(saved.id)))p.lichTaiKham.unshift(savedItem);
+    p.ngayTaiKham=p.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||date;
+    try{localStorage.setItem('btxh_people_cache_v3_'+String(managerSession?.user?.id||''),JSON.stringify(people));}catch(cacheErr){console.warn('Không cập nhật được cache lịch tái khám:',cacheErr);}
+    // Tải lại từ máy chủ để xác nhận; nếu lượt vừa lưu chưa xuất hiện thì giữ bản ghi vừa được xác nhận.
+    try{await loadReviews();}catch(readErr){console.warn('Đã ghi lịch tái khám nhưng chưa tải lại được danh sách:',readErr);}
+    const current=people.find(x=>String(x.id)===String(id));
+    if(current&&!current.lichTaiKham?.some(x=>String(x.id)===String(saved.id)))current.lichTaiKham=[savedItem,...(current.lichTaiKham||[])];
+    if(current){current.ngayTaiKham=current.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||date;}
     renderCensusHouse(n,$('censusContent').querySelector('.house-search')?.value||'');
-    showHouseReviewPanel(n);
-    alert('Đã lưu lượt tái khám và xác nhận dữ liệu từ máy chủ. Hồ sơ đối tượng chính không bị chỉnh sửa.');
+    await showHouseReviewPanel(n);
+    alert('Đã lưu lượt tái khám. Lịch vừa nhập đã được cập nhật vào danh sách.');
   }catch(err){
     showCloudError(err);
   }finally{
@@ -2163,28 +2177,39 @@ async function deletePersonReview(id,reviewId,n){
   if(!isAdmin()){alert('Chỉ ADMIN mới được xóa lịch tái khám.');return;}
   if(!confirm('Xóa riêng lượt tái khám này?'))return;
   const query=$('censusContent').querySelector('.house-search')?.value||'';
+  const person=people.find(x=>String(x.id)===String(id));
+  if(!person){alert('Không tìm thấy hồ sơ đối tượng. Vui lòng tải lại danh sách.');return;}
   rememberPersonEditReturnState();
   try{
-    const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId),{
-      method:'DELETE',
-      headers:headers({'Prefer':'return=representation'})
+    const r=await api('lich_tai_kham?id=eq.'+encodeURIComponent(reviewId)+'&select=id,person_id',{
+      method:'DELETE',headers:headers({'Prefer':'return=representation'})
     });
     const raw=await r.text();
     if(!r.ok)throw new Error(raw||('HTTP '+r.status));
-    let deleted=[];
-    try{deleted=raw?JSON.parse(raw):[];}catch(_){throw new Error('Máy chủ trả về dữ liệu xóa không hợp lệ: '+raw);}
-    if(!Array.isArray(deleted)||deleted.length===0){
-      throw new Error('Máy chủ không xác nhận đã xóa lượt tái khám. Kiểm tra mã lượt và quyền DELETE/RLS trên bảng lich_tai_kham.');
+    let deleted=[];try{deleted=raw?JSON.parse(raw):[];}catch(_){throw new Error('Máy chủ trả về dữ liệu xóa không hợp lệ: '+raw);}
+    if(!Array.isArray(deleted)||!deleted.some(x=>String(x.id)===String(reviewId)))
+      throw new Error('Máy chủ không xác nhận đã xóa đúng lượt tái khám. Kiểm tra mã lượt và quyền DELETE/RLS trên bảng lich_tai_kham.');
+    // Loại lượt vừa xóa ngay tại bộ nhớ, không phụ thuộc lượt đọc lại có bị trễ hay không.
+    person.lichTaiKham=(person.lichTaiKham||[]).filter(x=>String(x.id)!==String(reviewId));
+    try{await loadReviews();}catch(readErr){console.warn('Đã xóa trên máy chủ nhưng chưa tải lại được lịch:',readErr);}
+    const current=people.find(x=>String(x.id)===String(id));
+    if(current){
+      current.lichTaiKham=(current.lichTaiKham||[]).filter(x=>String(x.id)!==String(reviewId));
+      // Nếu không còn lượt nào, xóa ngày tái khám cũ trong hồ sơ để không bị hiện lại như lịch legacy.
+      if(!current.lichTaiKham.length){
+        current.ngayTaiKham='';current.updated=new Date().toISOString();
+        const savePerson=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:current.id,data:current,updated_at:current.updated})});
+        if(!savePerson.ok)throw new Error('Đã xóa lượt tái khám trong bảng lịch nhưng chưa xóa được ngày tái khám cũ trong hồ sơ: '+await savePerson.text());
+      }else{
+        current.ngayTaiKham=current.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||'';
+      }
     }
-    await loadReviews();
+    try{localStorage.setItem('btxh_people_cache_v3_'+String(managerSession?.user?.id||''),JSON.stringify(people));}catch(cacheErr){console.warn('Không cập nhật được cache sau khi xóa lịch:',cacheErr);}
     renderCensusHouse(n,query);
-    showHouseReviewPanel(n);
+    await showHouseReviewPanel(n);
     personEditReturnState=null;
-    alert('Đã xóa lượt tái khám đã được máy chủ xác nhận.');
-  }catch(err){
-    personEditReturnState=null;
-    showCloudError(err);
-  }
+    alert('Đã xóa lượt tái khám và cập nhật lại danh sách.');
+  }catch(err){personEditReturnState=null;showCloudError(err);}
 }
 
 function exportSchedule(scope,id,format,action="preview"){
