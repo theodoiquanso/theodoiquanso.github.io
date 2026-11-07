@@ -515,8 +515,10 @@ async function refreshSession(force=false){
 async function api(path, options={}){
   // Làm mới token trước khi hết hạn; nếu Supabase trả 401 thì làm mới và thử lại một lần.
   if(managerSession?.refresh_token)await refreshSession(false);
+  // Giữ nguyên các header riêng của từng thao tác (đặc biệt Prefer: return=representation).
+  // Trước đây headers() mặc định được ghép sau cùng nên đã ghi đè Prefer của POST/PATCH/DELETE.
   const send=()=>fetch(SUPABASE_URL+'/rest/v1/'+path,Object.assign({},options,{
-    headers:Object.assign({},options.headers||{},headers())
+    headers:headers(options.headers||{})
   }));
   let response=await send();
   if(response.status===401 && managerSession?.refresh_token){
@@ -949,12 +951,16 @@ async function loadReviews(){
     const current=byPerson[String(p.id)]||[];
     // Ưu tiên dữ liệu hiện có trên bảng lich_tai_kham; chỉ giữ bản cũ không có ID để tương thích hồ sơ trước đây.
     const currentIds=new Set(current.filter(x=>x.id!==undefined&&x.id!==null).map(x=>String(x.id)));
-    const legacyOnly=legacy.filter(x=>x.id===undefined||x.id===null);
+    // Giữ tạm những lượt vừa được INSERT máy chủ xác nhận nhưng tài khoản chưa đọc lại
+    // được do chính sách SELECT/RLS. Các lượt ID cũ không có cờ xác nhận vẫn bị loại,
+    // tránh làm lịch đã xóa xuất hiện trở lại từ cache.
+    const legacyOnly=legacy.filter(x=>(x.id===undefined||x.id===null)||(x._serverConfirmed===true&&!currentIds.has(String(x.id))));
     p.lichTaiKham=[...current,...legacyOnly];
     if(p.lichTaiKham.length){
       p.ngayTaiKham=p.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||p.ngayTaiKham||'';
     }
   });
+  return rows;
 }
 
 function toggleOtherDisease(){const check=$('thuocKhac'),wrap=$('thuocKhacWrap'),text=$('thuocKhacText');const on=check?!!check.checked:!!(text&&text.value.trim());if(wrap)wrap.style.display=on?'block':'none';if(text)text.required=!!check&&on;if(check&&!on&&text)text.value='';}
@@ -2155,18 +2161,32 @@ async function savePersonReview(e,n,id){
     }
     // Cập nhật ngay bộ nhớ giao diện bằng đúng bản ghi máy chủ vừa trả về.
     p.lichTaiKham=Array.isArray(p.lichTaiKham)?p.lichTaiKham:[];
-    const savedItem={id:saved.id,date:String(saved.review_date||date).slice(0,10),note:saved.note||note,createdAt:saved.created_at||new Date().toISOString()};
+    const savedItem={id:saved.id,date:String(saved.review_date||date).slice(0,10),note:saved.note||note,createdAt:saved.created_at||new Date().toISOString(),_serverConfirmed:true};
     if(!p.lichTaiKham.some(x=>String(x.id)===String(saved.id)))p.lichTaiKham.unshift(savedItem);
     p.ngayTaiKham=p.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||date;
     try{localStorage.setItem('btxh_people_cache_v3_'+String(managerSession?.user?.id||''),JSON.stringify(people));}catch(cacheErr){console.warn('Không cập nhật được cache lịch tái khám:',cacheErr);}
-    // Tải lại từ máy chủ để xác nhận; nếu lượt vừa lưu chưa xuất hiện thì giữ bản ghi vừa được xác nhận.
-    try{await loadReviews();}catch(readErr){console.warn('Đã ghi lịch tái khám nhưng chưa tải lại được danh sách:',readErr);}
+    // Đọc lại từ máy chủ. Nếu INSERT đã được xác nhận nhưng SELECT/RLS chưa cho
+    // tài khoản nhìn thấy, giữ lượt đã xác nhận trong cache và báo rõ tình trạng.
+    let readBackConfirmed=false;
+    try{
+      const rows=await loadReviews();
+      readBackConfirmed=rows.some(x=>String(x.id)===String(saved.id));
+    }catch(readErr){console.warn('Đã ghi lịch tái khám nhưng chưa tải lại được danh sách:',readErr);}
     const current=people.find(x=>String(x.id)===String(id));
     if(current&&!current.lichTaiKham?.some(x=>String(x.id)===String(saved.id)))current.lichTaiKham=[savedItem,...(current.lichTaiKham||[])];
-    if(current){current.ngayTaiKham=current.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||date;}
+    if(current){
+      const item=current.lichTaiKham.find(x=>String(x.id)===String(saved.id));
+      if(item)item._serverConfirmed=true;
+      current.ngayTaiKham=current.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||date;
+    }
+    try{localStorage.setItem('btxh_people_cache_v3_'+String(managerSession?.user?.id||''),JSON.stringify(people));}catch(cacheErr){console.warn('Không cập nhật được cache lịch tái khám:',cacheErr);}
     renderCensusHouse(n,$('censusContent').querySelector('.house-search')?.value||'');
     await showHouseReviewPanel(n);
-    alert('Đã lưu lượt tái khám. Lịch vừa nhập đã được cập nhật vào danh sách.');
+    if(readBackConfirmed){
+      alert('Đã lưu lượt tái khám và đọc xác nhận lại được từ máy chủ.');
+    }else{
+      alert('Máy chủ đã xác nhận nhận lượt tái khám, nhưng tài khoản chưa đọc lại được bản ghi từ bảng lịch. Lịch đã được giữ tạm trong hồ sơ trên thiết bị này. Cần kiểm tra quyền SELECT/RLS của bảng lich_tai_kham để các thiết bị/tài khoản khác đồng bộ được.');
+    }
   }catch(err){
     showCloudError(err);
   }finally{
