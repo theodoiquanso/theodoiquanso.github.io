@@ -925,11 +925,20 @@ async function loadPeople(){
   }
 }
 async function loadDx(){
-  const r=await api('kham_dot_xuat?select=id,person_id,date_time,reason,action,created_at&order=created_at.desc');
-  if(!r.ok)throw new Error(await r.text());
-  const rows=await r.json(); const map={};
-  rows.forEach(d=>(map[d.person_id]??=[]).push({id:d.id,dateTime:d.date_time,reason:d.reason,action:d.action,created_at:d.created_at}));
-  people.forEach(p=>p.khamDotXuat=map[p.id]||[]);
+  // Tải theo từng trang để không bị giới hạn mặc định 1.000 dòng của PostgREST.
+  const rows=[];const pageSize=500;let offset=0;
+  while(true){
+    const r=await api(`kham_dot_xuat?select=id,person_id,date_time,reason,action,created_at&order=created_at.desc&limit=${pageSize}&offset=${offset}`);
+    if(!r.ok)throw new Error(await r.text());
+    const page=await r.json();
+    if(!Array.isArray(page))throw new Error('Dữ liệu khám đột xuất từ Supabase không đúng định dạng.');
+    rows.push(...page);
+    if(page.length<pageSize)break;
+    offset+=pageSize;
+  }
+  const map={};
+  rows.forEach(d=>(map[String(d.person_id)]??=[]).push({id:d.id,dateTime:d.date_time,reason:d.reason,action:d.action,created_at:d.created_at}));
+  people.forEach(p=>p.khamDotXuat=map[String(p.id)]||[]);
 }
 
 async function loadReviews(){
