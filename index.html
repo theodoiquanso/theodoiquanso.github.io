@@ -1398,8 +1398,24 @@ async function savePerson(e){
   if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Đang lưu...';saveBtn.style.opacity='.7';}
   if(saveStatus){saveStatus.style.display='block';saveStatus.style.background='#eff6ff';saveStatus.style.color='#1d4ed8';saveStatus.textContent='Đang gửi hồ sơ lên máy chủ. Vui lòng không đóng cửa sổ...';}
   try{
-    const r=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:p.id,data:p,updated_at:new Date().toISOString()})});
-    if(!r.ok)throw new Error(await r.text());
+    // Chỉ báo lưu thành công khi Supabase xác nhận có bản ghi được ghi và đọc lại được.
+    // return=minimal trước đây có thể trả HTTP 2xx dù không có dòng nào thực sự được ghi.
+    const r=await api('so_tay_suc_khoe',{method:'POST',headers:headers({'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify({id:p.id,data:p,updated_at:new Date().toISOString()})});
+    const savedRaw=await r.text();
+    if(!r.ok)throw new Error(savedRaw||('Supabase trả mã '+r.status));
+    let savedRows=[];
+    try{savedRows=savedRaw?JSON.parse(savedRaw):[]}catch(_){throw new Error('Máy chủ không trả được xác nhận dữ liệu đã lưu. Không thể báo lưu thành công.');}
+    if(!Array.isArray(savedRows)||!savedRows.some(x=>String(x.id)===String(p.id))){
+      throw new Error('Máy chủ không xác nhận đã ghi hồ sơ này. Dữ liệu chưa được xác nhận lưu; vui lòng thử lại và kiểm tra quyền Supabase.');
+    }
+    // Đọc lại chính hồ sơ từ view mà ứng dụng dùng khi tải trang/F5.
+    // Nếu không đọc thấy, không cập nhật giao diện như thể đã lưu thành công.
+    const verify=await api('so_tay_suc_khoe_tom_tat?select=id,data,updated_at&id=eq.'+encodeURIComponent(p.id)+'&limit=1');
+    if(!verify.ok)throw new Error('Đã gửi dữ liệu nhưng không kiểm tra lại được từ máy chủ: '+await verify.text());
+    const verifyRows=await verify.json();
+    if(!Array.isArray(verifyRows)||!verifyRows.some(x=>String(x.id)===String(p.id))){
+      throw new Error('Chưa tìm thấy hồ sơ vừa lưu khi đọc lại từ máy chủ. Không báo lưu thành công để tránh mất dữ liệu khi tải lại trang.');
+    }
     const returnDetailId=old?personEditReturnDetailId:null;personEditReturnDetailId=null;
     // Cập nhật giao diện ngay từ dữ liệu vừa lưu, tránh chờ tải lại 3 bảng từ máy chủ.
     p.khamDotXuat=old?.khamDotXuat||[];
