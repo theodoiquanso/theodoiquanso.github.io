@@ -2852,7 +2852,33 @@ function updateDutyHouseLabels(){
     el.textContent=name?'👤 Cán bộ hôm nay: '+name:'Chưa cập nhật cán bộ hôm nay';
   });
 }
-window.addEventListener('focus',()=>{loadDutyRosterFromCloud();if($('dutyPanel')?.style.display!=='none')loadHandoverHistory();});
+// Đồng bộ lại hồ sơ từ Supabase khi người dùng quay lại tab/ứng dụng.
+let lastPeopleAutoSyncAt=0;
+let peopleAutoSyncRunning=false;
+async function refreshSharedDataOnReturn(){
+  if(document.visibilityState==='hidden' || !managerSession?.access_token ||
+     !managerPermission || managerPermission.trang_thai!==true || peopleAutoSyncRunning) return;
+  const now=Date.now();
+  // Tránh gọi tải dữ liệu lặp nhiều lần khi trình duyệt phát đồng thời focus + visibilitychange.
+  if(now-lastPeopleAutoSyncAt<12000) return;
+  lastPeopleAutoSyncAt=now;
+  peopleAutoSyncRunning=true;
+  try{
+    await loadPeople();
+    await loadDutyRosterFromCloud();
+    if($('dutyPanel')?.style.display!=='none') await loadHandoverHistory();
+  }catch(err){console.warn('Không thể tự đồng bộ dữ liệu khi quay lại ứng dụng:',err);}
+  finally{peopleAutoSyncRunning=false;}
+}
+window.addEventListener('focus',refreshSharedDataOnReturn);
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible') refreshSharedDataOnReturn();
+});
+// Thiết bị đang mở phần mềm cũng tự kiểm tra dữ liệu mới theo chu kỳ.
+// Trình duyệt di động có thể tạm dừng bộ đếm; visibilitychange sẽ đồng bộ khi mở lại.
+setInterval(()=>{
+  if(document.visibilityState==='visible') refreshSharedDataOnReturn();
+},60000);
 window.addEventListener('pageshow',()=>{loadDutyRosterFromCloud();if($('dutyPanel')?.style.display!=='none')loadHandoverHistory();});
 
 const MEAL_STORAGE_KEY='btxh_meal_today_v1';
