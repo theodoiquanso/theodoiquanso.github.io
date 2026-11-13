@@ -484,8 +484,11 @@ function headers(extra={}){
   return Object.assign({'apikey':SUPABASE_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},extra);
 }
 let refreshInProgress=null;
+let refreshFailureUntil=0;
 async function refreshSession(force=false){
   if(!managerSession?.refresh_token)return false;
+  // Tránh gọi refresh liên tục khi mạng/Supabase chập chờn. Không tự đăng xuất người dùng.
+  if(!force && Date.now()<refreshFailureUntil)return false;
   const expiresAt=Number(managerSession.expires_at||0);
   if(!force && expiresAt && expiresAt>Date.now()/1000+60)return true;
   if(refreshInProgress)return refreshInProgress;
@@ -495,28 +498,18 @@ async function refreshSession(force=false){
         method:'POST',
         body:JSON.stringify({refresh_token:managerSession.refresh_token})
       });
-      if(!r.ok){
-        const detail=await r.text();
-        const error=new Error(detail||'Không thể làm mới phiên đăng nhập.');
-        error.status=r.status;
-        throw error;
-      }
+      if(!r.ok)throw new Error(await r.text());
       const fresh=await r.json();
       if(!fresh?.access_token)throw new Error('Supabase không trả về access token mới.');
       managerSession=Object.assign({},managerSession,fresh);
+      refreshFailureUntil=0;
       localStorage.setItem(SESSION_KEY,JSON.stringify(managerSession));
       updateAuthUI();
       return true;
     }catch(err){
-      // Lỗi mạng/chập chờn hoặc máy chủ tạm thời không phản hồi không được tự đăng xuất.
-      // Chỉ xóa phiên khi Supabase xác nhận refresh token không còn hợp lệ.
-      console.warn('Không thể làm mới phiên đăng nhập Supabase:',err);
-      if([400,401,403].includes(Number(err?.status))){
-        managerSession=null;
-        localStorage.removeItem(SESSION_KEY);
-        managerPermission=null;
-        updateAuthUI();
-      }
+      console.warn('Không thể làm mới phiên đăng nhập Supabase; giữ nguyên phiên hiện tại và sẽ thử lại:',err);
+      refreshFailureUntil=Date.now()+30000;
+      // Lỗi mạng tạm thời không đồng nghĩa phiên hết hiệu lực; tuyệt đối không tự xóa phiên.
       return false;
     }finally{refreshInProgress=null;}
   })();
@@ -921,10 +914,12 @@ async function loadPeople(){
       return item;
     });
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không lưu được dữ liệu tạm:',e)}
+    // Không dựng lại giao diện khi người dùng đang nhập/sửa; render() sẽ đóng/ghi đè trạng thái biểu mẫu.
+    const userIsEditing = !!document.querySelector('.modal.show') || !!document.activeElement?.closest('#personForm, #loginModal, form');
     // Chỉ tải lịch khám đột xuất khi đồng bộ hồ sơ; lịch tái khám được tải
     // theo nhu cầu khi người dùng mở màn hình Lịch tái khám.
     try{await loadDx();}catch(dxError){console.warn('Không tải được lịch khám đột xuất lúc đồng bộ hồ sơ:',dxError);}
-    render();
+    if(!userIsEditing) render();
   }catch(e){
     console.error('Không đồng bộ được danh sách hồ sơ từ Supabase:',e);
     if(hadCache){
@@ -2882,13 +2877,10 @@ function updateDutyHouseLabels(){
 let lastPeopleAutoSyncAt=0;
 let peopleAutoSyncRunning=false;
 async function refreshSharedDataOnReturn(){
-  // Không đồng bộ nền khi đang mở biểu mẫu/modal hoặc đang nhập liệu.
-  // Tránh tải lại danh sách và dựng giao diện đúng lúc người dùng thao tác.
-  const active=document.activeElement;
-  const typing=active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
-  const modalOpen=!!document.querySelector('.modal.show');
+  // Đồng bộ nền có thể gọi render() và làm đóng biểu mẫu đang nhập. Tạm hoãn khi có modal/form đang mở.
+  if(document.querySelector('.modal.show') || document.activeElement?.closest('form')) return;
   if(document.visibilityState==='hidden' || !managerSession?.access_token ||
-     !managerPermission || managerPermission.trang_thai!==true || peopleAutoSyncRunning || modalOpen || typing) return;
+     !managerPermission || managerPermission.trang_thai!==true || peopleAutoSyncRunning) return;
   const now=Date.now();
   // Tránh gọi tải dữ liệu lặp nhiều lần khi trình duyệt phát đồng thời focus + visibilitychange.
   if(now-lastPeopleAutoSyncAt<12000) return;
@@ -2910,7 +2902,7 @@ document.addEventListener('visibilitychange',()=>{
 setInterval(()=>{
   if(document.visibilityState==='visible') refreshSharedDataOnReturn();
 },60000);
-window.addEventListener('pageshow',()=>{refreshSharedDataOnReturn();});
+window.addEventListener('pageshow',()=>{loadDutyRosterFromCloud();if($('dutyPanel')?.style.display!=='none')loadHandoverHistory();});
 
 const MEAL_STORAGE_KEY='btxh_meal_today_v1';
 function todayLocalKey(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
