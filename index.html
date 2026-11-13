@@ -495,7 +495,12 @@ async function refreshSession(force=false){
         method:'POST',
         body:JSON.stringify({refresh_token:managerSession.refresh_token})
       });
-      if(!r.ok)throw new Error(await r.text());
+      if(!r.ok){
+        const detail=await r.text();
+        const error=new Error(detail||'Không thể làm mới phiên đăng nhập.');
+        error.status=r.status;
+        throw error;
+      }
       const fresh=await r.json();
       if(!fresh?.access_token)throw new Error('Supabase không trả về access token mới.');
       managerSession=Object.assign({},managerSession,fresh);
@@ -503,10 +508,15 @@ async function refreshSession(force=false){
       updateAuthUI();
       return true;
     }catch(err){
+      // Lỗi mạng/chập chờn hoặc máy chủ tạm thời không phản hồi không được tự đăng xuất.
+      // Chỉ xóa phiên khi Supabase xác nhận refresh token không còn hợp lệ.
       console.warn('Không thể làm mới phiên đăng nhập Supabase:',err);
-      managerSession=null;
-      localStorage.removeItem(SESSION_KEY);
-      updateAuthUI();
+      if([400,401,403].includes(Number(err?.status))){
+        managerSession=null;
+        localStorage.removeItem(SESSION_KEY);
+        managerPermission=null;
+        updateAuthUI();
+      }
       return false;
     }finally{refreshInProgress=null;}
   })();
@@ -2872,8 +2882,13 @@ function updateDutyHouseLabels(){
 let lastPeopleAutoSyncAt=0;
 let peopleAutoSyncRunning=false;
 async function refreshSharedDataOnReturn(){
+  // Không đồng bộ nền khi đang mở biểu mẫu/modal hoặc đang nhập liệu.
+  // Tránh tải lại danh sách và dựng giao diện đúng lúc người dùng thao tác.
+  const active=document.activeElement;
+  const typing=active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+  const modalOpen=!!document.querySelector('.modal.show');
   if(document.visibilityState==='hidden' || !managerSession?.access_token ||
-     !managerPermission || managerPermission.trang_thai!==true || peopleAutoSyncRunning) return;
+     !managerPermission || managerPermission.trang_thai!==true || peopleAutoSyncRunning || modalOpen || typing) return;
   const now=Date.now();
   // Tránh gọi tải dữ liệu lặp nhiều lần khi trình duyệt phát đồng thời focus + visibilitychange.
   if(now-lastPeopleAutoSyncAt<12000) return;
@@ -2895,7 +2910,7 @@ document.addEventListener('visibilitychange',()=>{
 setInterval(()=>{
   if(document.visibilityState==='visible') refreshSharedDataOnReturn();
 },60000);
-window.addEventListener('pageshow',()=>{loadDutyRosterFromCloud();if($('dutyPanel')?.style.display!=='none')loadHandoverHistory();});
+window.addEventListener('pageshow',()=>{refreshSharedDataOnReturn();});
 
 const MEAL_STORAGE_KEY='btxh_meal_today_v1';
 function todayLocalKey(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
