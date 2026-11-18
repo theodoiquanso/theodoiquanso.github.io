@@ -569,9 +569,9 @@ async function loadMyPermission(){
   const userId=managerSession?.user?.id;
   if(!userId)throw new Error('Không xác định được tài khoản đăng nhập.');
   const r=await api('phan_quyen?select=user_id,vai_tro,ho_ten,trang_thai,pham_vi,ten_dang_nhap&user_id=eq.'+encodeURIComponent(userId)+'&trang_thai=eq.true&limit=1');
-  if(!r.ok)throw new Error('Không đọc được phân quyền Supabase: '+await r.text());
+  if(!r.ok){const err=new Error('Không đọc được phân quyền Supabase (HTTP '+r.status+'): '+await r.text());err.status=r.status;throw err;}
   const rows=await r.json();
-  if(!rows.length)throw new Error('Tài khoản chưa được cấp quyền hoặc đang bị khóa trong bảng phan_quyen.');
+  if(!rows.length){const err=new Error('Tài khoản chưa được cấp quyền hoặc đang bị khóa trong bảng phan_quyen.');err.permissionRevoked=true;throw err;}
   managerPermission=rows[0];
   return managerPermission;
 }
@@ -796,7 +796,25 @@ async function restoreSession(){
     await loadMyPermission();
     if(isMealUploader()){document.body.classList.add('meal-only-authenticated');document.body.classList.remove('authenticated');renderMeal();openMealUpload();return;}
     document.body.classList.remove('meal-only-authenticated');await activateAuthenticatedApp();
-  }catch(e){console.warn('Phiên đăng nhập không hợp lệ:',e);managerSession=null;managerPermission=null;localStorage.removeItem(SESSION_KEY);updateAuthUI();}
+  }catch(e){
+    console.warn('Không thể khôi phục phiên đăng nhập:',e);
+    // Chỉ xóa phiên khi máy chủ xác nhận tài khoản không còn quyền/đã bị khóa.
+    // Lỗi mạng, timeout, giới hạn truy cập hoặc lỗi máy chủ tạm thời không được tự đăng xuất.
+    const status=Number(e?.status||0);
+    const definitivePermissionError=!!e?.permissionRevoked;
+    const transient=status===0||status===408||status===429||status>=500;
+    if(definitivePermissionError){
+      managerSession=null;managerPermission=null;
+      try{localStorage.removeItem(SESSION_KEY);}catch(_){}
+      updateAuthUI();
+      const notice=$('authNotice');if(notice){notice.textContent='Tài khoản hiện không còn quyền truy cập hoặc đã bị khóa. Vui lòng liên hệ ADMIN.';notice.style.display='block';}
+    }else{
+      // Giữ nguyên access/refresh token để lần mở lại hoặc lần đồng bộ kế tiếp thử lại.
+      try{if(managerSession?.access_token)localStorage.setItem(SESSION_KEY,JSON.stringify(managerSession));}catch(_){}
+      managerPermission=null;updateAuthUI();
+      const notice=$('authNotice');if(notice){notice.textContent=transient?'Chưa kết nối được máy chủ. Phiên đăng nhập vẫn được giữ; vui lòng kiểm tra mạng và tải lại trang.':'Chưa xác minh được quyền tài khoản. Phiên đăng nhập vẫn được giữ; vui lòng thử tải lại trang hoặc liên hệ ADMIN.';notice.style.display='block';}
+    }
+  }
 }
 function toggleLoginHouse(){
   const isHouse=$('loginRoleType')?.value==='house';
@@ -872,7 +890,8 @@ function openLogin(){
 }
 function showCloudError(err){console.error(err);alert('Không thể thực hiện được thao tác với Supabase.\n\n'+(err?.message||err));}
 
-async function loadPeople(){
+async function loadPeople(options={}){
+  const renderUI=options.renderUI!==false;
   if(!(managerSession?.access_token && managerPermission && managerPermission.trang_thai===true)){people=[];return;}
   // Sau khi xác thực và kiểm tra quyền, hiện bản dữ liệu đã đồng bộ lần trước từ localStorage ngay;
   // luôn tải dữ liệu máy chủ ở nền để cập nhật. Cache được tách theo user ID, không thay thế xác thực/phân quyền.
@@ -919,14 +938,14 @@ async function loadPeople(){
     // Chỉ tải lịch khám đột xuất khi đồng bộ hồ sơ; lịch tái khám được tải
     // theo nhu cầu khi người dùng mở màn hình Lịch tái khám.
     try{await loadDx();}catch(dxError){console.warn('Không tải được lịch khám đột xuất lúc đồng bộ hồ sơ:',dxError);}
-    if(!userIsEditing) render();
+    if(renderUI && !userIsEditing) render();
   }catch(e){
     console.error('Không đồng bộ được danh sách hồ sơ từ Supabase:',e);
     if(hadCache){
       const notice=$('authNotice');
       if(notice){notice.textContent='Chưa đồng bộ được dữ liệu mới nhất từ máy chủ. Đang hiển thị dữ liệu đã lưu trên thiết bị; số liệu có thể chưa phải số mới nhất.';notice.style.display='block';}
-      render();
-    }else showCloudError(e);
+      if(renderUI) render();
+    }else if(renderUI) showCloudError(e);
   }
 }
 async function loadDx(){
@@ -1469,8 +1488,8 @@ async function delPerson(id){
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không cập nhật được cache sau khi xóa:',e)}
     restorePersonEditReturnState();
     refreshDashboardAfterDelete(prior);
-    // Vẽ lại từ danh sách people đã loại hồ sơ và cache vừa cập nhật.
-    render();
+    // restorePersonEditReturnState() đã cập nhật số liệu và khôi phục đúng màn hình trước khi xóa.
+    // Không gọi render() lần nữa vì sẽ dựng lại trang chủ và làm người dùng bị bật khỏi màn hình đang xem.
     alert('Đã xóa hồ sơ đối tượng.');
   }catch(err){personEditReturnState=null;showCloudError(err)}
 }
@@ -2968,7 +2987,7 @@ function updateDutyHouseLabels(){
     el.textContent=name?'👤 Cán bộ hôm nay: '+name:'Chưa cập nhật cán bộ hôm nay';
   });
 }
-// Đồng bộ lại hồ sơ từ Supabase khi người dùng quay lại tab/ứng dụng.
+// Đồng bộ lại hồ sơ từ Supabase khi người dùng quay lại tab/ứng dụng; không dựng lại màn hình đang mở.
 let lastPeopleAutoSyncAt=0;
 let peopleAutoSyncRunning=false;
 async function refreshSharedDataOnReturn(){
@@ -2979,12 +2998,12 @@ async function refreshSharedDataOnReturn(){
   const now=Date.now();
   // Tránh gọi tải dữ liệu lặp nhiều lần khi trình duyệt phát đồng thời focus + visibilitychange.
   if(now-lastPeopleAutoSyncAt<12000) return;
-  lastPeopleAutoSyncAt=now;
   peopleAutoSyncRunning=true;
   try{
-    await loadPeople();
+    await loadPeople({renderUI:false});
     await loadDutyRosterFromCloud();
     if($('dutyPanel')?.style.display!=='none') await loadHandoverHistory();
+    lastPeopleAutoSyncAt=Date.now();
   }catch(err){console.warn('Không thể tự đồng bộ dữ liệu khi quay lại ứng dụng:',err);}
   finally{peopleAutoSyncRunning=false;}
 }
