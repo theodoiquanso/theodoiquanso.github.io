@@ -1089,7 +1089,7 @@ function dailyPlace(p){
   return loc==='Khu'?`Khu – ${p.nha||'Chưa chọn nhà'}`:loc==='Bệnh viện'?`Bệnh viện${p.bvInfo?' – '+p.bvInfo:''}`:(loc||p.nha||'Chưa xác định');
 }
 function makeDailyEvent({type,title,p,from='',to='',reason='',dateTime=new Date().toISOString()}){
-  return {id:uid(),date:localDateKey(dateTime),dateTime,type,title,personId:String(p?.id||''),ma:p?.ma||'',ten:p?.ten||'',from,to,reason,by:managerSession?.user?.email||'Tài khoản đã đăng nhập'};
+  return {id:uid(),date:localDateKey(dateTime),dateTime,type,title,personId:String(p?.id||''),ma:p?.ma||'',ten:p?.ten||'',namsinh:p?.namsinh||'',from,to,reason,by:managerSession?.user?.email||'Tài khoản đã đăng nhập'};
 }
 function appendDailyEvent(person,event){
   if(!person)return;
@@ -1876,10 +1876,10 @@ async function showCensusZoneSchedule(z){
  const houses=z==='elderly'?[1,2,3,4]:z==='homeless'?[5,6,7,8,9]:z==='mental'?[10,11]:[];
  pop.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn gray" onclick="renderCensusHome()">← Quay lại màn trước</button></div><h3>📅 Lịch tái khám — ${censusZoneName(z)}</h3>
  <div class="notice">Số liệu trên màn hình chính là số lượt tái khám trong ngày hôm nay. Chọn một kỳ thống kê bên dưới để xem số liệu phục vụ báo cáo.</div>
- <div id="zoneReviewStats" style="margin:10px 0;padding:12px;border:1px solid #cbd5e1;border-radius:9px"><b>📊 Thống kê lịch tái khám — ${censusZoneName(z)}</b><div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px"><div><label for="zoneReviewFrom"><b>Từ ngày:</b></label><input id="zoneReviewFrom" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px" oninput="this.value=this.value.replace(/[^0-9/.-]/g,'').slice(0,10)"></div><div><label for="zoneReviewTo"><b>Đến ngày:</b></label><input id="zoneReviewTo" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px" oninput="this.value=this.value.replace(/[^0-9/.-]/g,'').slice(0,10)"></div><button type="button" class="btn blue" onclick="showZoneReviewRange('${z}')">Xem thống kê</button></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px"><label for="zoneReviewHouseFilter"><b>📍 Xem thống kê theo nhà:</b></label><select id="zoneReviewHouseFilter" onchange="showZoneReviewRange('${z}')" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px"><option value="all">Tất cả nhà trong khu</option>${houses.map(n=>`<option value="${n}">Nhà ${n}</option>`).join('')}</select></div><div id="zoneReviewStatsDetail" class="notice" style="margin-top:8px">Chọn khoảng ngày rồi bấm “Xem thống kê”.</div></div>
+ <div id="zoneReviewStats" style="margin:10px 0;padding:12px;border:1px solid #cbd5e1;border-radius:9px"><b>📊 Thống kê lịch tái khám — ${censusZoneName(z)}</b><div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px"><div><label for="zoneReviewFrom"><b>Từ ngày:</b></label><input id="zoneReviewFrom" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px" oninput="formatDateInputSlash(this)"></div><div><label for="zoneReviewTo"><b>Đến ngày:</b></label><input id="zoneReviewTo" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px" oninput="formatDateInputSlash(this)"></div><button type="button" class="btn blue" onclick="showZoneReviewRange('${z}')">Xem thống kê</button></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px"><label for="zoneReviewHouseFilter"><b>📍 Xem thống kê theo nhà:</b></label><select id="zoneReviewHouseFilter" onchange="showZoneReviewRange('${z}')" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px"><option value="all">Tất cả nhà trong khu</option>${houses.map(n=>`<option value="${n}">Nhà ${n}</option>`).join('')}</select></div><div id="zoneReviewStatsDetail" class="notice" style="margin-top:8px">Chọn khoảng ngày rồi bấm “Xem thống kê”.</div></div>
  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;padding:12px;border:1px solid #cbd5e1;border-radius:9px">
  <b style="width:100%">📤 Xuất lịch tái khám</b>
- <label for="zoneReviewDate">Lọc ngày (dd/mm/yyyy):</label><input id="zoneReviewDate" type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="dd/mm/yyyy" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px" oninput="this.value=this.value.replace(/[^0-9/.-]/g,'').slice(0,10)" onchange="filterCensusZoneScheduleDate('${z}',this.value)">
+ <label for="zoneReviewDate">Lọc ngày (dd/mm/yyyy):</label><input id="zoneReviewDate" type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="dd/mm/yyyy" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px" oninput="formatDateInputSlash(this)" onchange="filterCensusZoneScheduleDate('${z}',this.value)">
  <button type="button" class="btn green" onclick="exportSchedule('zone','${z}','csv')">Xuất cả Khu – Excel</button><button type="button" class="btn blue" onclick="exportSchedule('zone','${z}','pdf')">Xuất cả Khu – PDF / In</button>
  <label for="zoneScheduleExportHouse">Hoặc chọn Nhà:</label><select id="zoneScheduleExportHouse" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px"><option value="">-- Chọn Nhà --</option>${houses.map(n=>`<option value="${n}">Nhà ${n}</option>`).join('')}</select>
  <button type="button" class="btn green" onclick="exportSchedule('zonehouse','${z}','csv')">Xuất Nhà – Excel</button><button type="button" class="btn blue" onclick="exportSchedule('zonehouse','${z}','pdf')">Xuất Nhà – PDF / In</button>
@@ -1894,6 +1894,14 @@ function zoneReviewRows(list,period){const now=new Date();now.setHours(23,59,59,
       const bh=Number(String(b.p.nha||'').match(/\d+/)?.[0]||999);
       return ah-bh || a.day.localeCompare(b.day) || String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi');
     });}
+function formatDateInputSlash(input){
+ if(!input)return;
+ const digits=String(input.value||'').replace(/\D/g,'').slice(0,8);
+ let formatted=digits;
+ if(digits.length>4)formatted=digits.slice(0,2)+'/'+digits.slice(2,4)+'/'+digits.slice(4);
+ else if(digits.length>2)formatted=digits.slice(0,2)+'/'+digits.slice(2);
+ input.value=formatted;
+}
 function normalizeReviewDateInput(value){const v=String(value||'').trim();if(!v)return '';if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;const m=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);if(!m)return '';const d=Number(m[1]),mo=Number(m[2]),y=Number(m[3]);const dt=new Date(0);dt.setFullYear(y,mo-1,d);dt.setHours(0,0,0,0);if(dt.getFullYear()!==y||dt.getMonth()!==mo-1||dt.getDate()!==d)return '';return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
 function reviewDateDisplay(value){const iso=normalizeReviewDateInput(value);return iso?formatDateVN(iso):'';}
 function showZoneReviewRange(z){const detail=$('zoneReviewStatsDetail');if(!detail)return;const from=normalizeReviewDateInput($('zoneReviewFrom')?.value);const to=normalizeReviewDateInput($('zoneReviewTo')?.value);const selected=$('zoneReviewHouseFilter')?.value||'all';if(!from||!to||from>to){detail.innerHTML='Vui lòng nhập ngày theo dạng ngày/tháng/năm (ví dụ 03/11/2026) và chọn khoảng ngày hợp lệ.';return;}let rows=censusListForZone(z).flatMap(p=>personReviewHistory(p).map(item=>({p,item,day:String(item.date||'').slice(0,10)}))).filter(x=>x.day&&x.day>=from&&x.day<=to).sort((a,b)=>a.day.localeCompare(b.day)||String(a.p.ten||'').localeCompare(String(b.p.ten||''),'vi'));if(selected!=='all')rows=rows.filter(({p})=>String(p.nha||'').replace(/^Nhà\s*/i,'').trim()===selected);rows=uniquePersonReviewDayRows(rows);const scope=selected==='all'?censusZoneName(z):'Nhà '+selected;const visitCount=rows.length;detail.innerHTML=`<b>${visitCount} lượt tái khám từ ${esc(formatDateVN(from))} đến ${esc(formatDateVN(to))} — ${scope}</b>${rows.length?`<div class="table-wrap"><table style="display:table;min-width:800px"><thead><tr><th>Ngày</th><th>Họ tên</th><th>Năm sinh</th><th>Mã đối tượng</th><th>Nhà</th><th>Phân loại sức khoẻ</th><th>Ghi chú</th></tr></thead><tbody>${rows.map(({p,item,day})=>`<tr><td>${esc(formatDateVN(day))}</td><td>${esc(p.ten||'')}</td><td>${esc(p.namsinh||'Chưa cập nhật')}</td><td>${esc(p.ma||'')}</td><td>${esc(p.nha||'')}</td><td>${esc(p.phanLoaiSucKhoe||p.phan_loai_suc_khoe||p.phanLoai||p.tinhTrang||'')}</td><td>${esc(reviewNoteDisplay(item))}</td></tr>`).join('')}</tbody></table></div>`:'<div>Không có lượt tái khám trong khoảng ngày đã chọn.</div>'}`;}
@@ -1919,6 +1927,92 @@ function filterCensusZoneScheduleDate(z,date){
   <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">${houseOrder.map(n=>`<button type="button" class="btn purple" onclick="openCensusZone('${z}');setTimeout(()=>{renderCensusHouse(${n});showHouseReviewPanel(${n})},0)">＋ Nhập lịch Nhà ${n}</button>`).join('')}</div>`;
 }
 let censusZoneFilter='all';
+
+function censusZoneHouseNumbers(z){
+ if(z==='elderly')return [1,2,3,4];
+ if(z==='homeless')return [5,6,7,8,9];
+ if(z==='mental')return [10,11];
+ return [];
+}
+function censusReportHouseNumber(value){
+ const m=String(value||'').match(/Nhà\s*(1[01]|[1-9])\b/i);return m?Number(m[1]):null;
+}
+function censusMovementNoteForHouse(houseName,date){
+ const houseNo=censusReportHouseNumber(houseName);if(!houseNo)return '';
+ const events=allDailyEvents().filter(e=>String(e.date||String(e.dateTime||'').slice(0,10))===String(date||localDateKey()));
+ const notes=[];
+ for(const e of events){
+  const fromNo=censusReportHouseNumber(e.from),toNo=censusReportHouseNumber(e.to);
+  const person=people.find(p=>String(p.id)===String(e.personId));
+  const name=String(e.ten||person?.ten||'Chưa rõ tên').trim();
+  const year=String(e.namsinh||person?.namsinh||'').trim();
+  const who=name+(year?' '+year:'');
+  const from=String(e.from||''),to=String(e.to||'');
+  const isHomeReturn=/hồi gia/i.test((e.title||'')+' '+to);
+  if(isHomeReturn&&fromNo===houseNo){notes.push('Hồi gia '+who);continue;}
+  if(fromNo===houseNo&&(/y tế|phòng y tế/i.test(to)||toNo===null&&e.type==='decrease')){
+   notes.push('Giảm 01 NTX '+who);continue;
+  }
+  if(toNo===houseNo&&(/y tế|phòng y tế/i.test(from))){notes.push('Tăng 01 TXV '+who);continue;}
+  if(fromNo!==null&&toNo!==null&&fromNo!==toNo&&(fromNo===houseNo||toNo===houseNo)){
+   notes.push('Chuyển từ Nhà '+fromNo+' sang Nhà '+toNo+' '+who);continue;
+  }
+  if(fromNo===houseNo&&toNo!==houseNo&&e.type==='decrease')notes.push('Giảm 01 '+who);
+  else if(toNo===houseNo&&fromNo!==houseNo&&e.type==='increase')notes.push('Tăng 01 '+who);
+ }
+ return [...new Set(notes)].join('\n');
+}
+function censusZoneReportRows(z,date=localDateKey()){
+ const houses=censusZoneHouseNumbers(z);
+ const atKhu=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu');
+ const loose=atKhu.filter(p=>/cánh\\s*lẻ/i.test(String(p.nha||''))&&(
+  String(p.khu||'').trim()===censusZoneName(z)||
+  (z==='elderly'&&/người cao tuổi|khu\\s*i\\b/i.test(String(p.khu||'')))||
+  (z==='homeless'&&/người lang thang|khu\\s*ii\\b/i.test(String(p.khu||'')))||
+  (z==='mental'&&/bệnh tâm thần|khu\\s*iii\\b/i.test(String(p.khu||'')))
+ ));
+ const present=atKhu.filter(p=>censusZoneForHouse(p.nha)===z).concat(loose);
+ const ageOf=p=>censusAge(p);
+ const count=(arr,gender,older)=>arr.filter(p=>p.gioitinh===gender&&ageOf(p)!==null&&(older?ageOf(p)>=60:ageOf(p)<60)).length;
+ const rows=houses.map(n=>{
+  const list=present.filter(p=>String(p.nha||'').trim()==='Nhà '+n);
+  return {name:'Nhà '+n,total:list.length,overMale:count(list,'Nam',true),overFemale:count(list,'Nữ',true),underMale:count(list,'Nam',false),underFemale:count(list,'Nữ',false),note:censusMovementNoteForHouse('Nhà '+n,date)};
+ });
+ rows.push({name:'Cánh lẻ',total:loose.length,overMale:count(loose,'Nam',true),overFemale:count(loose,'Nữ',true),underMale:count(loose,'Nam',false),underFemale:count(loose,'Nữ',false)});
+ const male=present.filter(p=>p.gioitinh==='Nam'), female=present.filter(p=>p.gioitinh==='Nữ');
+ return {rows,present,male,female,summary:[
+  {name:'Nữ',list:female},
+  {name:'Nam',list:male},
+  {name:'Tổng',list:present}
+ ].map(x=>({name:x.name,total:x.list.length,over:x.list.filter(p=>ageOf(p)!==null&&ageOf(p)>=60).length,under:x.list.filter(p=>ageOf(p)!==null&&ageOf(p)<60).length}))};
+}
+function censusZoneReportHtml(z,date=localDateKey()){
+ const data=censusZoneReportRows(z,date);
+ const safeDate=esc(formatDateVN(date));
+ const body=data.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.total}</td><td>${r.overMale||''}</td><td>${r.overFemale||''}</td><td>${r.underMale||''}</td><td>${r.underFemale||''}</td><td style="white-space:pre-line;text-align:left">${esc(r.note||'')}</td></tr>`).join('');
+ const summary=data.summary.map(r=>`<tr><td colspan="2">${esc(r.name)}</td><td>${r.total}</td><td colspan="2">${r.over||''}</td><td colspan="2">${r.under||''}</td><td></td></tr>`).join('');
+ return `<div class="census-zone-report-print"><h3 style="text-align:center;margin:8px 0">BÁO CÁO QUÂN SỐ ${esc(censusZoneName(z).toLocaleUpperCase('vi'))}</h3><div style="text-align:center;margin-bottom:10px">Ngày ${safeDate}</div><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th rowspan="2">STT</th><th rowspan="2">Nhà</th><th rowspan="2">Hiện diện</th><th colspan="2">Trên 60 tuổi</th><th colspan="2">Dưới 60 tuổi</th><th rowspan="2">Ghi chú</th></tr><tr><th>Nam</th><th>Nữ</th><th>Nam</th><th>Nữ</th></tr></thead><tbody>${body}<tr><td colspan="8" style="height:8px"></td></tr>${summary}</tbody></table><div style="text-align:right;margin-top:18px">Người lập báo cáo: ....................................</div></div>`;
+}
+function renderCensusZoneReport(z){
+ const date=document.getElementById('censusZoneReportDate')?.value||localDateKey();
+ const host=document.getElementById('censusZoneReportPreview');
+ if(host)host.innerHTML=censusZoneReportHtml(z,date);
+}
+function exportCensusZoneReport(z,format){
+ const date=document.getElementById('censusZoneReportDate')?.value||localDateKey();
+ const data=censusZoneReportRows(z,date);
+ const rows=[
+  ['BÁO CÁO QUÂN SỐ '+censusZoneName(z).toLocaleUpperCase('vi')],
+  ['Ngày báo cáo',formatDateVN(date)],[],
+  ['STT','Nhà','Hiện diện','Trên 60 tuổi - Nam','Trên 60 tuổi - Nữ','Dưới 60 tuổi - Nam','Dưới 60 tuổi - Nữ','Ghi chú']
+ ];
+ data.rows.forEach((r,i)=>rows.push([i+1,r.name,r.total,r.overMale,r.overFemale,r.underMale,r.underFemale,r.note||'']));
+ rows.push([],['','Nữ',data.summary[0].total,data.summary[0].over,'',data.summary[0].under,'',''],['','Nam',data.summary[1].total,data.summary[1].over,'',data.summary[1].under,'',''],['','Tổng',data.summary[2].total,data.summary[2].over,'',data.summary[2].under,'','']);
+ if(format==='excel'){downloadFormattedExcel('Bao_cao_quan_so_'+z+'_'+date+'.xls',rows);return;}
+ const html=`<!doctype html><html lang="vi"><head><meta charset="utf-8"><style>body{font-family:Arial;padding:20px;color:#111}table,th,td{border:1px solid #333;border-collapse:collapse;padding:7px;text-align:center}th{background:#eee}h3{text-align:center}@media print{body{padding:0}}</style></head><body>${censusZoneReportHtml(z,date)}</body></html>`;
+ showReportInApp(html,'Báo cáo quân số — '+censusZoneName(z));
+}
+
 function openCensusZone(z){
  censusZoneFilter='all';const pop=$('censusContent');const zoneName=censusZoneName(z);let houses=[];
  if(z==='elderly')houses=[1,2,3,4];else if(z==='homeless')houses=[5,6,7,8,9];else if(z==='mental')houses=[10,11];
@@ -1927,6 +2021,7 @@ function openCensusZone(z){
  }
  const all=censusListForZone(z);
  pop.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn gray" onclick="renderCensusHome()">← Quay lại màn trước</button></div><h3>${zoneName}</h3><div class="census-house-list">${houses.map(n=>{const list=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()==='Nhà '+n);return `<button class="census-zone" onclick="openCensusHouse(${n})"><b>Nhà ${n}</b><span>${list.length} đối tượng</span>${dutyHouseLabelHtml('Nhà '+n)}</button>`}).join('')}</div>
+ <div class="section">Báo cáo quân số khu</div><div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:8px 0"><div><label for="censusZoneReportDate">Ngày báo cáo</label><input id="censusZoneReportDate" type="date" value="${localDateKey()}" onchange="renderCensusZoneReport('${z}')"></div><button type="button" class="btn blue" onclick="renderCensusZoneReport('${z}')">Xem báo cáo</button><button type="button" class="btn green" onclick="exportCensusZoneReport('${z}','excel')">Xuất Excel</button><button type="button" class="btn blue" onclick="exportCensusZoneReport('${z}','print')">In / PDF</button></div><div id="censusZoneReportPreview">${censusZoneReportHtml(z)}</div>
  <div class="section">Danh sách đối tượng theo tiêu chí</div>${censusStatsHtml(all,null,z)}
  ${isAdmin()?`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;padding:12px;border:1px solid #cbd5e1;border-radius:9px"><b style="width:100%">💵 Rút tiền / Gửi tiền BTXH — ADMIN</b><span>Xuất danh sách tổng hợp các Nhà trong Khu này theo mẫu RUT hoặc GUI.</span><button type="button" class="btn blue" onclick="openMoneyExportZone('RUT','${z}')">💵 Rút tiền — cả Khu</button><button type="button" class="btn purple" onclick="openMoneyExportZone('GUI','${z}')">💰 Gửi tiền — cả Khu</button></div>`:''}
  <div id="zoneFilteredPeople"></div>`;
@@ -1957,7 +2052,7 @@ function renderCensusDailyEvents(scope,key,date){
  const html=events.length?events.map(e=>`<article class="daily-event ${e.type==='increase'?'increase':e.type==='decrease'?'decrease':e.type==='transfer'?'transfer':''}"><div><b>${esc(e.title||'Diễn biến hồ sơ')}</b></div><div class="movement">${esc(e.ten||'Chưa có họ tên')} — Mã ĐT: ${esc(e.ma||'')}</div>${e.from?`<div><b>Từ:</b> ${esc(e.from)}</div>`:''}${e.to?`<div><b>Đến / trạng thái:</b> ${esc(e.to)}</div>`:''}${e.reason?`<div><b>Lý do / ghi chú:</b> ${esc(e.reason)}</div>`:''}<div class="meta">${esc(e.dateTime?new Date(e.dateTime).toLocaleString('vi-VN'):'')} · Người ghi nhận: ${esc(e.by||'')}</div><button class="btn blue" onclick="viewPerson('${String(e.personId).replace(/'/g,"\\'")}')">Xem hồ sơ</button>${isAdmin()?` <button class="btn red" onclick="deleteDailyEvent('${String(e.personId)}','${String(e.id||'')}')">Xóa diễn biến</button>`:''}</article>`).join(''):'<div class="notice">Không có diễn biến được ghi nhận cho ngày đã chọn tại mục này.</div>';
  let host=document.getElementById('censusDailyEventsPanel');
  if(!host){host=document.createElement('div');host.id='censusDailyEventsPanel';host.style.marginTop='14px';$('censusContent').appendChild(host);}
- host.innerHTML=`<div class="section">📋 Diễn biến — ${esc(title)} (${events.length})</div><div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:8px 0"><div><label for="censusDailyEventsDate">Chọn ngày xem</label><input id="censusDailyEventsDate" type="date" value="${esc(date)}" onchange="renderCensusDailyEvents('${scope}','${String(key).replace(/'/g,"\\'")}',this.value)"></div><button type="button" class="btn blue" onclick="openDailyReport(document.getElementById('censusDailyEventsDate')?.value||'${date}')">Xem trong diễn biến tổng hợp trang chủ</button><button type="button" class="btn gray" onclick="document.getElementById('censusDailyEventsPanel')?.remove()">Đóng danh sách</button></div>${html}`;
+ host.innerHTML=`<div class="section">📋 Diễn biến — ${esc(title)} (${events.length})</div><div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:8px 0"><div><label for="censusDailyEventsDate">Chọn ngày xem</label><input id="censusDailyEventsDate" type="date" value="${esc(date)}" onchange="renderCensusDailyEvents('${scope}','${String(key).replace(/'/g,"\\'")}',this.value)"></div><button type="button" class="btn blue" onclick="renderCensusDailyEvents('${scope}','${String(key).replace(/'/g,"\\'")}',document.getElementById('censusDailyEventsDate')?.value||'${date}')">Xem diễn biến khu</button><button type="button" class="btn gray" onclick="document.getElementById('censusDailyEventsPanel')?.remove()">Đóng danh sách</button></div>${html}`;
  host.scrollIntoView({behavior:'smooth',block:'start'});
 }
 function showCensusDailyEvents(scope,key){renderCensusDailyEvents(scope,key,localDateKey());}
@@ -2046,12 +2141,12 @@ async function showHouseReviewPanel(n, query='', period='range', showList=false,
     <div style="margin:10px 0;padding:14px;border:2px solid #2563eb;border-radius:10px;background:#f8fbff">
       <b style="display:block;font-size:16px;margin-bottom:4px">📊 THỐNG KÊ TÁI KHÁM RIÊNG — ${house}</b>
       <div style="font-size:13px;color:#475569;margin-bottom:8px">Chọn khoảng ngày dương lịch để xem số liệu của riêng ${house}.</div>
-      <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px"><div><label for="houseReviewFrom"><b>Từ ngày:</b></label><input id="houseReviewFrom" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" value="${esc(formatDateVN(from))}" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px"></div><div><label for="houseReviewTo"><b>Đến ngày:</b></label><input id="houseReviewTo" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" value="${esc(formatDateVN(to))}" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px"></div><button type="button" class="btn blue" onclick="showHouseReviewPanel(${n},'', 'range', true, '', $('houseReviewFrom').value, $('houseReviewTo').value)">Xem thống kê</button></div>
+      <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:10px"><div><label for="houseReviewFrom"><b>Từ ngày:</b></label><input id="houseReviewFrom" type="text" oninput="formatDateInputSlash(this)" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" value="${esc(formatDateVN(from))}" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px"></div><div><label for="houseReviewTo"><b>Đến ngày:</b></label><input id="houseReviewTo" type="text" oninput="formatDateInputSlash(this)" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" value="${esc(formatDateVN(to))}" style="display:block;padding:10px;border:1px solid #cbd5e1;border-radius:8px"></div><button type="button" class="btn blue" onclick="showHouseReviewPanel(${n},'', 'range', true, '', $('houseReviewFrom').value, $('houseReviewTo').value)">Xem thống kê</button></div>
       <div class="notice" style="margin-top:8px">${validRange?`Thống kê từ <b>${esc(formatDateVN(from))}</b> đến <b>${esc(formatDateVN(to))}</b>: <b>${countRange}</b> lượt tái khám.`:'Vui lòng chọn khoảng ngày hợp lệ (Từ ngày không được sau Đến ngày).' } <span> · Tổng số lượt tái khám đã ghi nhận: <b>${countAll}</b> lượt.</span></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;padding:10px;border:1px solid #cbd5e1;border-radius:9px">
       <b style="width:100%">📤 Xuất lịch tái khám — ${house}</b>
-      <label for="houseScheduleExportDate">Lọc ngày:</label><input id="houseScheduleExportDate" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" value="${esc(selectedDate?formatDateVN(selectedDate):'')}" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px">
+      <label for="houseScheduleExportDate">Lọc ngày:</label><input id="houseScheduleExportDate" type="text" oninput="formatDateInputSlash(this)" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" value="${esc(selectedDate?formatDateVN(selectedDate):'')}" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px">
       <button type="button" class="btn blue" onclick="showHouseReviewPanel(${n},'', 'all', true, $('houseScheduleExportDate').value, $('houseReviewFrom')?.value, $('houseReviewTo')?.value)">Xem danh sách ngày đã chọn</button>
       <button type="button" class="btn green" onclick="exportSchedule('house',${n},'csv')">Xuất Nhà — Excel</button>
       <button type="button" class="btn blue" onclick="exportSchedule('house',${n},'pdf')">Xuất Nhà — PDF / In</button>
