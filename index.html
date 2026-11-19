@@ -896,6 +896,7 @@ async function loadPeople(options={}){
   // Sau khi xác thực và kiểm tra quyền, hiện bản dữ liệu đã đồng bộ lần trước từ localStorage ngay;
   // luôn tải dữ liệu máy chủ ở nền để cập nhật. Cache được tách theo user ID, không thay thế xác thực/phân quyền.
   const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
+  let cacheShown=false;
   try{
     let cached=localStorage.getItem(cacheKey);
     // Di chuyển cache phiên cũ nếu có, để người dùng không phải chờ tải lại chỉ vì đổi phiên bản.
@@ -906,16 +907,23 @@ async function loadPeople(options={}){
     }
     if(cached){
       const parsed=JSON.parse(cached);
-      // Cache chỉ dùng để giữ ảnh và làm phương án dự phòng; không render quân số từ cache
-      // trước khi tải xong hồ sơ + lượt khám đột xuất từ máy chủ, tránh số liệu nhảy sau F5.
-      if(Array.isArray(parsed)){people=parsed;}
+      // Sau khi xác thực quyền thành công, hiển thị cache của đúng tài khoản ngay để
+      // người dùng không phải nhìn màn hình trống trong lúc máy chủ tải dữ liệu mới.
+      if(Array.isArray(parsed)){people=parsed; cacheShown=parsed.length>0;}
     }
   }catch(e){console.warn('Không đọc được dữ liệu lưu tạm:',e)}
   const hadCache=Array.isArray(people)&&people.length>0;
+  if(cacheShown && renderUI && !document.querySelector('.modal.show')){
+    const notice=$('authNotice');
+    if(notice){notice.textContent='Đang hiển thị dữ liệu đã lưu trên thiết bị; hệ thống đang cập nhật dữ liệu mới nhất từ máy chủ.';notice.style.display='block';}
+    render();
+  }
+  // Tải danh sách hồ sơ và lịch khám đột xuất đồng thời để giảm tổng thời gian chờ.
+  const dxPromise=loadDx().catch(dxError=>{console.warn('Không tải được lịch khám đột xuất:',dxError);return null;});
   try{
-    // Tải view theo từng trang nhỏ để giảm nguy cơ statement timeout khi vừa mở phần mềm.
-    // View không truyền ảnh base64; ảnh đã có trong cache được giữ lại.
-    const rows=[]; const pageSize=150; let offset=0;
+    // Dùng trang 1.000 dòng (mức phân trang thông dụng của PostgREST) để giảm số
+    // lượt gọi tuần tự; dữ liệu vẫn được phân trang nếu vượt giới hạn này.
+    const rows=[]; const pageSize=1000; let offset=0;
     while(true){
       const r=await api(`so_tay_suc_khoe_tom_tat?select=id,data,updated_at&limit=${pageSize}&offset=${offset}`);
       if(!r.ok)throw new Error(await r.text());
@@ -926,31 +934,36 @@ async function loadPeople(options={}){
       offset+=pageSize;
     }
     const oldById=new Map(people.map(p=>[String(p.id),p]));
+    const dxMap=await dxPromise;
     people=rows.map(x=>{
       const item=Object.assign({id:x.id},x.data||{});
       const previous=oldById.get(String(x.id));
       if(previous && Object.prototype.hasOwnProperty.call(previous,'photo')) item.photo=previous.photo;
+      // Chỉ ghép lịch khám sau khi đã có danh sách hồ sơ mới từ máy chủ,
+      // tránh race condition khiến số liệu/vị trí dùng lịch khám cũ.
+      if(dxMap) item.khamDotXuat=dxMap[String(x.id)]||[];
       return item;
     });
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không lưu được dữ liệu tạm:',e)}
     // Không dựng lại giao diện khi người dùng đang nhập/sửa; render() sẽ đóng/ghi đè trạng thái biểu mẫu.
     const userIsEditing = !!document.querySelector('.modal.show') || !!document.activeElement?.closest('#personForm, #loginModal, form');
-    // Chỉ tải lịch khám đột xuất khi đồng bộ hồ sơ; lịch tái khám được tải
-    // theo nhu cầu khi người dùng mở màn hình Lịch tái khám.
-    try{await loadDx();}catch(dxError){console.warn('Không tải được lịch khám đột xuất lúc đồng bộ hồ sơ:',dxError);}
     if(renderUI && !userIsEditing) render();
+    const notice=$('authNotice');
+    if(notice){notice.textContent='Đã đồng bộ dữ liệu mới nhất từ máy chủ lúc '+new Date().toLocaleTimeString('vi-VN')+'. Tổng hồ sơ tải được: '+people.length+'.';notice.style.display='block';}
   }catch(e){
     console.error('Không đồng bộ được danh sách hồ sơ từ Supabase:',e);
     if(hadCache){
       const notice=$('authNotice');
       if(notice){notice.textContent='Chưa đồng bộ được dữ liệu mới nhất từ máy chủ. Đang hiển thị dữ liệu đã lưu trên thiết bị; số liệu có thể chưa phải số mới nhất.';notice.style.display='block';}
       if(renderUI) render();
+      const staleNotice=$('authNotice');
+      if(staleNotice){staleNotice.textContent='CHƯA ĐỒNG BỘ ĐƯỢC: đang hiển thị dữ liệu lưu tạm, chưa xác nhận số liệu mới nhất từ máy chủ. Kiểm tra mạng/Supabase rồi tải lại.';staleNotice.style.display='block';}
     }else if(renderUI) showCloudError(e);
   }
 }
 async function loadDx(){
   // Tải theo từng trang để không bị giới hạn mặc định 1.000 dòng của PostgREST.
-  const rows=[];const pageSize=500;let offset=0;
+  const rows=[];const pageSize=1000;let offset=0;
   while(true){
     const r=await api(`kham_dot_xuat?select=id,person_id,date_time,reason,action,created_at&order=created_at.desc&limit=${pageSize}&offset=${offset}`);
     if(!r.ok)throw new Error(await r.text());
@@ -962,7 +975,7 @@ async function loadDx(){
   }
   const map={};
   rows.forEach(d=>(map[String(d.person_id)]??=[]).push({id:d.id,dateTime:d.date_time,reason:d.reason,action:d.action,created_at:d.created_at}));
-  people.forEach(p=>p.khamDotXuat=map[String(p.id)]||[]);
+  return map;
 }
 
 async function loadReviews(){
@@ -1440,8 +1453,11 @@ async function savePerson(e){
     if(!Array.isArray(verifyRows)||!verifyRows.some(x=>String(x.id)===String(p.id))){
       throw new Error('Chưa tìm thấy hồ sơ vừa lưu khi đọc lại từ máy chủ. Không báo lưu thành công để tránh mất dữ liệu khi tải lại trang.');
     }
+    const verifiedRow=verifyRows.find(x=>String(x.id)===String(p.id));
+    const serverPerson=verifiedRow?.data&&typeof verifiedRow.data==='object'?Object.assign({id:verifiedRow.id},verifiedRow.data):p;
     const returnDetailId=old?personEditReturnDetailId:null;personEditReturnDetailId=null;
-    // Cập nhật giao diện ngay từ dữ liệu vừa lưu, tránh chờ tải lại 3 bảng từ máy chủ.
+    // Cập nhật giao diện từ chính dữ liệu máy chủ vừa đọc xác nhận.
+    Object.assign(p,serverPerson);
     p.khamDotXuat=old?.khamDotXuat||[];
     p.lichTaiKham=old?.lichTaiKham||[];
     const savedIndex=people.findIndex(x=>String(x.id)===String(p.id));
@@ -1837,7 +1853,7 @@ async function deleteDx(dxId,personId=''){
  try{
    const r=await api('kham_dot_xuat?id=eq.'+encodeURIComponent(dxId),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
    if(!r.ok)throw new Error(await r.text());
-   await loadDx();render();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
+   const dxMap=await loadDx();people.forEach(person=>person.khamDotXuat=dxMap[String(person.id)]||[]);render();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
    alert('Đã xóa lượt khám đột xuất.');
  }catch(err){personEditReturnState=null;showCloudError(err)}
 }
