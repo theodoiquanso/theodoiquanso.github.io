@@ -474,9 +474,12 @@ const SUPABASE_URL = 'https://izsvbljotokmfuknvhcz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_gHWRV7zJekV9lMxxHlan_A_tJnI_jPY';
 const SESSION_KEY='btxh_manager_session';
 let people=[];
-// Sắp xếp danh sách đối tượng theo tên tiếng Việt A–Z; không thay đổi dữ liệu gốc.
+// Sắp xếp danh sách theo TÊN gọi (từ cuối họ tên) A–Z; nếu trùng tên thì xét họ, tên đệm.
+// Chỉ thay đổi thứ tự hiển thị, không thay đổi nội dung hồ sơ hay mã đối tượng.
 const peopleNameCollator=new Intl.Collator('vi',{sensitivity:'base',numeric:true});
-function sortPeopleByName(list){return (Array.isArray(list)?list:[]).slice().sort((a,b)=>peopleNameCollator.compare(String(a?.ten||'').trim(),String(b?.ten||'').trim())||String(a?.ma||'').localeCompare(String(b?.ma||''),'vi',{numeric:true}));}
+function splitVietnameseFullName(value){const full=String(value||'').trim().replace(/\s+/g,' ');const parts=full.split(' ').filter(Boolean);return {surname:parts[0]||'',middle:parts.slice(1,-1).join(' '),given:parts[parts.length-1]||'',full};}
+function compareVietnameseSurname(a,b){const A=splitVietnameseFullName(a?.ten),B=splitVietnameseFullName(b?.ten);return peopleNameCollator.compare(A.given,B.given)||peopleNameCollator.compare(A.surname,B.surname)||peopleNameCollator.compare(A.middle,B.middle)||peopleNameCollator.compare(A.full,B.full)||String(a?.ma||'').localeCompare(String(b?.ma||''),'vi',{numeric:true});}
+function sortPeopleByName(list){return (Array.isArray(list)?list:[]).slice().sort(compareVietnameseSurname);}
 function sortPeopleInPlace(){people=sortPeopleByName(people);return people;}
 
 let photoData='';
@@ -1272,7 +1275,7 @@ function renderDailyReport(){
     else if(dailyReportFilter==='khu3')baseRoster=khu3People;
     else if(dailyReportFilter==='health')baseRoster=healthPeople;
     else if(dailyReportFilter==='hospital')baseRoster=hospitalPeople;
-    const roster=baseRoster.slice().sort((a,b)=>String(a.ten||'').localeCompare(String(b.ten||''),'vi'));
+    const roster=baseRoster.slice().sort(compareVietnameseSurname);
     detail=roster.length?roster.map(p=>`<article class="daily-event"><div class="movement">${esc(p.ten||'Chưa có họ tên')} — Mã ĐT: ${esc(p.ma||'Chưa có mã')}</div><div><b>Năm sinh:</b> ${esc(p.namsinh||'—')} · <b>Giới tính:</b> ${esc(p.gioitinh||'—')} · <b>Khuyết tật:</b> ${esc(p.khuyettat||'Không rõ')}</div><div><b>Vị trí:</b> ${esc(locationText(p)||'Chưa xác định')} · <b>Nhà:</b> ${esc(p.nha||'—')}</div><div><b>Địa chỉ:</b> ${esc(p.diachi||'—')}</div><button class="btn blue" style="margin-top:7px" onclick="viewPerson('${String(p.id).replace(/'/g,"\'")}')">Xem hồ sơ đầy đủ</button></article>`).join(''):'<div class="notice">Không có hồ sơ đang quản lý.</div>';
   }else{
     let list=events;
@@ -1280,7 +1283,7 @@ function renderDailyReport(){
     else if(dailyReportFilter==='increase')list=increaseEvents;
     else if(['over60','under60','male','female','disabled'].includes(dailyReportFilter)){
       const filters={over60:p=>p.namsinh&&currentYear-Number(p.namsinh)>=60,under60:p=>p.namsinh&&currentYear-Number(p.namsinh)<60,male:p=>p.gioitinh==='Nam',female:p=>p.gioitinh==='Nữ',disabled:p=>p.khuyettat==='Có'};
-      const roster=active.filter(filters[dailyReportFilter]).slice().sort((a,b)=>String(a.ten||'').localeCompare(String(b.ten||''),'vi'));
+      const roster=active.filter(filters[dailyReportFilter]).slice().sort(compareVietnameseSurname);
       detail=roster.length?roster.map(p=>`<article class="daily-event"><div class="movement">${esc(p.ten||'Chưa có họ tên')} — Mã ĐT: ${esc(p.ma||'Chưa có mã')}</div><div><b>Năm sinh:</b> ${esc(p.namsinh||'—')} · <b>Giới tính:</b> ${esc(p.gioitinh||'—')} · <b>Khuyết tật:</b> ${esc(p.khuyettat||'Không rõ')}</div><div><b>Vị trí:</b> ${esc(locationText(p)||'Chưa xác định')} · <b>Nhà:</b> ${esc(p.nha||'—')}</div><button class="btn blue" style="margin-top:7px" onclick="viewPerson('${String(p.id).replace(/'/g,"\'")}')">Xem hồ sơ đầy đủ</button></article>`).join(''):'<div class="notice">Không có đối tượng thuộc mục này.</div>';
       list=[];
     }
@@ -2621,15 +2624,15 @@ function showDashboardList(type){
   const houses=['Nhà 1','Nhà 2','Nhà 3','Nhà 4'];
   html='<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:8px">'+houses.map(h=>`<button class="btn blue" onclick="showDashboardList('house:${h}')">${h} — ${people.filter(p=>currentLocation(p)==='Khu'&&String(p.nha||'').trim()===h).length} người</button>`).join('')+'</div><div class="notice">Chọn Nhà để xem danh sách đối tượng đang ở nhà đó.</div>';
  }else if(type.startsWith('house:')){
-  const house=type.slice(6); title='Danh sách tại '+house; const list=people.filter(p=>currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house);
+  const house=type.slice(6); title='Danh sách tại '+house; const list=sortPeopleByName(people.filter(p=>currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house));
   html='<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn gray" onclick="showDashboardList(\'Khu\')">← Quay lại màn trước</button><button type="button" class="btn gray" onclick="returnMainInterface()">⌂ Quay ra giao diện chính</button></div>'+ (list.length?list.map(p=>`<div class="dx-item"><b>${esc(p.ten)}</b> — ${esc(p.ma)}<br>Nhà: ${esc(p.nha||'—')}<br>Vị trí: ${esc(locationText(p))}<br><button class="btn blue" onclick="viewPerson('${p.id}')">Xem hồ sơ</button></div>`).join(''):'<div class="notice">Chưa có đối tượng đang ở '+esc(house)+'. Hãy kiểm tra mục Nhà trong hồ sơ đối tượng.</div>');
  }else if(['all','Phòng Y tế','Ph·ng Y t?','Bệnh viện'].includes(type)){
   const normalizedType=type==='Ph·ng Y t?'?'Phòng Y tế':type;
   title=type==='all'?'Tất cả đối tượng':normalizedType==='Phòng Y tế'?'Danh sách đối tượng tại Y tế':'Danh sách đối tượng tại Bệnh viện';
-  const list=(type==='all'?people:people.filter(p=>currentLocation(p)===normalizedType)).filter(p=>isCurrentlyManaged(p));
+  const list=sortPeopleByName((type==='all'?people:people.filter(p=>currentLocation(p)===normalizedType)).filter(p=>isCurrentlyManaged(p)));
   html=list.length?list.map(p=>`<div class="dx-item"><b>${esc(p.ten)}</b> — ${esc(p.ma)}<br>Vị trí: ${esc(locationText(p))}<br>Khuyết tật: ${esc(p.khuyettat||'Chưa cập nhật')}<br>Tình trạng: ${esc(p.tinhTrang||'—')}<br><button class="btn blue" onclick="viewPerson('${p.id}')">Xem hồ sơ</button></div>`).join(''):'Chưa có đối tượng đang quản lý trong mục này.';
  }else if(type==='med'){
-  title='Danh sách người đang uống thuốc';const list=people.filter(isTakingMedicine);html=list.map(p=>`<div class="dx-item"><b>${esc(p.ten)}</b> — ${esc(p.ma)}<br>Thuốc: ${esc(meds(p))}<br><button class="btn blue" onclick="viewPerson('${p.id}')">Xem hồ sơ</button></div>`).join('');if(!html)html='Chưa có dữ liệu trong mục này.';
+  title='Danh sách người đang uống thuốc';const list=sortPeopleByName(people.filter(isTakingMedicine));html=list.map(p=>`<div class="dx-item"><b>${esc(p.ten)}</b> — ${esc(p.ma)}<br>Thuốc: ${esc(meds(p))}<br><button class="btn blue" onclick="viewPerson('${p.id}')">Xem hồ sơ</button></div>`).join('');if(!html)html='Chưa có dữ liệu trong mục này.';
  }else{
   title=type==='dxweek'?'Danh sách khám đột xuất tuần này':'Danh sách khám đột xuất';const list=type==='dxweek'?weeklyDx():people.flatMap(p=>(p.khamDotXuat||[]).map(d=>({...d,name:p.ten,ma:p.ma,personId:p.id})));
   html=list.map(d=>`<div class="dx-item"><b>${esc(d.dateTime||'')}</b> — ${esc(d.name)} (${esc(d.ma)})<br>Lý do: ${esc(d.reason)}<br>Hướng xử lý: ${esc(dxActionText(d.action))}<br><button class="btn gray" onclick="viewPerson('${d.personId||''}')">Xem hồ sơ</button>${canManagePerson(people.find(p=>String(p.id)===String(d.personId)))&&d.id?` <button class="btn blue" onclick="openDxForm('${d.personId||''}','${d.id}')">Sửa lượt khám</button>`:''}${isAdmin()&&d.id?` <button class="btn red" onclick="deleteDx('${d.id}','${d.personId||''}')">Xóa lượt khám</button>`:''}</div>`).join('');if(!html)html='Chưa có dữ liệu trong mục này.';
@@ -3170,7 +3173,7 @@ function openMoneyExport(type, houseNumber) {
   moneyExportType = type === 'GUI' ? 'GUI' : 'RUT';
   moneyExportHouseNumber = Number(houseNumber);
   const house = 'Nhà ' + moneyExportHouseNumber;
-  moneyExportPeopleCache = people.filter(p => isCurrentlyManaged(p) && currentLocation(p) === 'Khu' && String(p.nha || '').trim() === house).sort((a,b)=>String(a.ten||'').localeCompare(String(b.ten||''),'vi'));
+  moneyExportPeopleCache = people.filter(p => isCurrentlyManaged(p) && currentLocation(p) === 'Khu' && String(p.nha || '').trim() === house).sort(compareVietnameseSurname);
   $('moneyExportTitle').textContent = moneyExportType === 'RUT' ? '💵 Đối tượng BTXH rút tiền — ' + house : '💰 Đối tượng BTXH gửi tiền — ' + house;
   $('moneyExportHouse').value = house;
   $('moneyExportContent').value = '';
@@ -3184,7 +3187,7 @@ function openMoneyExportZone(type, zone) {
   moneyExportType = type === 'GUI' ? 'GUI' : 'RUT';
   const zoneHouses = zone === 'elderly' ? [1,2,3,4] : zone === 'homeless' ? [5,6,7,8,9] : zone === 'mental' ? [10,11] : [];
   const allowed = zoneHouses.map(n => 'Nhà ' + n);
-  moneyExportPeopleCache = people.filter(p => isCurrentlyManaged(p) && currentLocation(p) === 'Khu' && allowed.includes(String(p.nha || '').trim())).sort((a,b)=>String(a.nha||'').localeCompare(String(b.nha||''),'vi',{numeric:true}) || String(a.ten||'').localeCompare(String(b.ten||''),'vi'));
+  moneyExportPeopleCache = people.filter(p => isCurrentlyManaged(p) && currentLocation(p) === 'Khu' && allowed.includes(String(p.nha || '').trim())).sort((a,b)=>String(a.nha||'').localeCompare(String(b.nha||''),'vi',{numeric:true}) || compareVietnameseSurname(a,b));
   $('moneyExportTitle').textContent = (moneyExportType === 'RUT' ? '💵 Rút tiền BTXH — ' : '💰 Gửi tiền BTXH — ') + censusZoneName(zone) + ' (ADMIN)';
   $('moneyExportHouse').value = 'Toàn Khu';
   $('moneyExportContent').value = '';
