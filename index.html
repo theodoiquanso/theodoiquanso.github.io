@@ -474,6 +474,11 @@ const SUPABASE_URL = 'https://izsvbljotokmfuknvhcz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_gHWRV7zJekV9lMxxHlan_A_tJnI_jPY';
 const SESSION_KEY='btxh_manager_session';
 let people=[];
+// Sắp xếp danh sách đối tượng theo tên tiếng Việt A–Z; không thay đổi dữ liệu gốc.
+const peopleNameCollator=new Intl.Collator('vi',{sensitivity:'base',numeric:true});
+function sortPeopleByName(list){return (Array.isArray(list)?list:[]).slice().sort((a,b)=>peopleNameCollator.compare(String(a?.ten||'').trim(),String(b?.ten||'').trim())||String(a?.ma||'').localeCompare(String(b?.ma||''),'vi',{numeric:true}));}
+function sortPeopleInPlace(){people=sortPeopleByName(people);return people;}
+
 let photoData='';
 let managerSession=null;
 let managerPermission=null;
@@ -909,7 +914,7 @@ async function loadPeople(options={}){
       const parsed=JSON.parse(cached);
       // Sau khi xác thực quyền thành công, hiển thị cache của đúng tài khoản ngay để
       // người dùng không phải nhìn màn hình trống trong lúc máy chủ tải dữ liệu mới.
-      if(Array.isArray(parsed)){people=parsed; cacheShown=parsed.length>0;}
+      if(Array.isArray(parsed)){people=sortPeopleByName(parsed); cacheShown=parsed.length>0;}
     }
   }catch(e){console.warn('Không đọc được dữ liệu lưu tạm:',e)}
   const hadCache=Array.isArray(people)&&people.length>0;
@@ -935,7 +940,7 @@ async function loadPeople(options={}){
     }
     const oldById=new Map(people.map(p=>[String(p.id),p]));
     const dxMap=await dxPromise;
-    people=rows.map(x=>{
+    people=sortPeopleByName(rows.map(x=>{
       const item=Object.assign({id:x.id},x.data||{});
       const previous=oldById.get(String(x.id));
       if(previous && Object.prototype.hasOwnProperty.call(previous,'photo')) item.photo=previous.photo;
@@ -943,7 +948,7 @@ async function loadPeople(options={}){
       // tránh race condition khiến số liệu/vị trí dùng lịch khám cũ.
       if(dxMap) item.khamDotXuat=dxMap[String(x.id)]||[];
       return item;
-    });
+    }));
     try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(e){console.warn('Không lưu được dữ liệu tạm:',e)}
     // Không dựng lại giao diện khi người dùng đang nhập/sửa; render() sẽ đóng/ghi đè trạng thái biểu mẫu.
     const userIsEditing = !!document.querySelector('.modal.show') || !!document.activeElement?.closest('#personForm, #loginModal, form');
@@ -1585,6 +1590,7 @@ function openDxWeekly(){
   // Đã ẩn mục thống kê khám đột xuất khỏi giao diện chính.
 }
 function render(){
+  sortPeopleInPlace();
   let q=($('search').value||'').trim().toLowerCase(),fs=$('filterStatus').value,fl=$('filterLocation').value;
 
   const scopePeople=isViewer()?people.filter(canViewPerson):people;
@@ -2128,7 +2134,7 @@ function renderCensusDailyEvents(scope,key,date){
 function showCensusDailyEvents(scope,key){renderCensusDailyEvents(scope,key,localDateKey());}
 
 function censusStatsHtml(list,n,zoneKey=''){const active=list.filter(p=>isCurrentlyManaged(p));const scope=zoneKey?'zone':'house';const scopeValue=zoneKey||n;const tile=(label,count,key)=>`<button type="button" class="census-mini" style="border:0;cursor:pointer;font:inherit" onclick="${zoneKey?`filterCensusZone('${zoneKey}','${key}')`:`filterCensusHouse(${n},'${key}')`}"><span>${label}</span><b>${count}</b></button>`;return `<div class="census-stats">${tile('Tổng đang quản lý',active.length,'all')}${tile('Nam',active.filter(p=>p.gioitinh==='Nam').length,'male')}${tile('Nữ',active.filter(p=>p.gioitinh==='Nữ').length,'female')}${tile('Từ 60 tuổi trở lên',active.filter(p=>censusAge(p)>=60).length,'over60')}${tile('Dưới 60 tuổi',active.filter(p=>censusAge(p)!==null&&censusAge(p)<60).length,'under60')}${tile('Khuyết tật',active.filter(p=>p.khuyettat==='Có').length,'disabled')}<button type="button" class="census-mini" style="border:0;cursor:pointer;font:inherit" onclick="showCensusDailyEvents('${scope}','${scopeValue}')"><span>Ghi nhận diễn biến trong ngày</span><b>${countCensusDailyEvents(scope,scopeValue)}</b></button>${tile('Tâm thần',active.filter(p=>p.thuocTT).length,'mental')}${tile('Lịch tái khám hôm nay',reviewCountToday(active),'review')}</div>`;}
-function censusPeopleHtml(list){return list.length?list.map(p=>{const today=localDateKeyReview();const todayReviews=personReviewHistory(p).filter(item=>String(item.date||'').slice(0,10)===today);const reviewText=todayReviews.length?todayReviews.map(item=>formatDateVN(String(item.date||'').slice(0,10))).join(', '):formatDateVN(p.ngayTaiKham)||'Chưa có lịch';const reviewActions=isAdmin()?todayReviews.map((item,n)=>item.id!==undefined&&item.id!==null&&String(item.id).trim()!==''?`<div style="margin:5px 0 5px 10px"><span>Lượt ${n+1} (${esc(formatDateVN(String(item.date||'').slice(0,10)))}):</span> <button type="button" class="btn blue" onclick="editPersonReview('${String(p.id).replace(/'/g,"\\'")}','${String(item.id).replace(/'/g,"\\'")}',${Number(String(p.nha||'').replace(/\\D/g,''))||0})">✎ Sửa lượt khám</button> <button type="button" class="btn red" onclick="deletePersonReview('${String(p.id).replace(/'/g,"\\'")}','${String(item.id).replace(/'/g,"\\'")}',${Number(String(p.nha||'').replace(/\\D/g,''))||0})">🗑 Xóa lượt khám</button></div>`:'').join(''):'';return `<div class="census-person"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')}<br><span>Giới tính: ${esc(p.gioitinh||'Chưa cập nhật')} · Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')}</span><br><span>Trạng thái: ${esc(p.trangthai||'Đang quản lý')} · Khám đột xuất: ${(p.khamDotXuat||[]).length} lượt</span><br><span><b>Lịch tái khám hôm nay:</b> ${esc(reviewText)}</span>${reviewActions?`<br>${reviewActions}`:''}<br><button class="btn blue" onclick="viewPerson('${String(p.id).replace(/'/g,"\\'")}')">Xem hồ sơ</button> <button class="btn purple" onclick="openTransfer('${String(p.id).replace(/'/g,"\\'")}')">↔ Chuyển vị trí</button>${isAdmin()?` <button class="btn red" onclick="delPerson('${String(p.id).replace(/'/g,"\\'")}')">Xóa hồ sơ</button>`:''}</div>`}).join(''):'<div class="notice">Chưa có đối tượng tại vị trí này.</div>';}
+function censusPeopleHtml(list){list=sortPeopleByName(list);return list.length?list.map(p=>{const today=localDateKeyReview();const todayReviews=personReviewHistory(p).filter(item=>String(item.date||'').slice(0,10)===today);const reviewText=todayReviews.length?todayReviews.map(item=>formatDateVN(String(item.date||'').slice(0,10))).join(', '):formatDateVN(p.ngayTaiKham)||'Chưa có lịch';const reviewActions=isAdmin()?todayReviews.map((item,n)=>item.id!==undefined&&item.id!==null&&String(item.id).trim()!==''?`<div style="margin:5px 0 5px 10px"><span>Lượt ${n+1} (${esc(formatDateVN(String(item.date||'').slice(0,10)))}):</span> <button type="button" class="btn blue" onclick="editPersonReview('${String(p.id).replace(/'/g,"\\'")}','${String(item.id).replace(/'/g,"\\'")}',${Number(String(p.nha||'').replace(/\\D/g,''))||0})">✎ Sửa lượt khám</button> <button type="button" class="btn red" onclick="deletePersonReview('${String(p.id).replace(/'/g,"\\'")}','${String(item.id).replace(/'/g,"\\'")}',${Number(String(p.nha||'').replace(/\\D/g,''))||0})">🗑 Xóa lượt khám</button></div>`:'').join(''):'';return `<div class="census-person"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')}<br><span>Giới tính: ${esc(p.gioitinh||'Chưa cập nhật')} · Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')}</span><br><span>Trạng thái: ${esc(p.trangthai||'Đang quản lý')} · Khám đột xuất: ${(p.khamDotXuat||[]).length} lượt</span><br><span><b>Lịch tái khám hôm nay:</b> ${esc(reviewText)}</span>${reviewActions?`<br>${reviewActions}`:''}<br><button class="btn blue" onclick="viewPerson('${String(p.id).replace(/'/g,"\\'")}')">Xem hồ sơ</button> <button class="btn purple" onclick="openTransfer('${String(p.id).replace(/'/g,"\\'")}')">↔ Chuyển vị trí</button>${isAdmin()?` <button class="btn red" onclick="delPerson('${String(p.id).replace(/'/g,"\\'")}')">Xóa hồ sơ</button>`:''}</div>`}).join(''):'<div class="notice">Chưa có đối tượng tại vị trí này.</div>';}
 let censusHouseFilter='all';
 let censusHouseListVisible=false;
 let censusDxSearchOpen=false;
@@ -2136,7 +2142,7 @@ function filterCensusHouse(n,key){censusHouseFilter=key;censusHouseListVisible=t
 function renderCensusHouseDxSearch(n, query=''){
  const house='Nhà '+n, q=String(query||'').trim().toLocaleLowerCase('vi');
  const all=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house);
- const matches=q?all.filter(p=>String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q)):[];
+ const matches=q?sortPeopleByName(all.filter(p=>String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q))):[];
  const el=$('houseDxSearchResults');if(!el)return;
  el.innerHTML=!q?'<div class="notice">Nhập tên hoặc năm sinh để chọn người cần khám đột xuất.</div>':(matches.length?matches.map(p=>`<div class="census-person"><b>${esc(p.ten||'')}</b> — Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')}<br><button class="btn purple" onclick="openDxForm('${p.id}')">Chọn khám đột xuất</button></div>`).join(''):'<div class="notice">Không tìm thấy đối tượng trong nhà này.</div>');
 }
@@ -2237,7 +2243,7 @@ function renderHouseReviewQuickSearch(n, query){
   const result=$('houseReviewQuickResults'); if(!result)return;
   const q=String(query||'').trim().toLocaleLowerCase('vi');
   const house='Nhà '+n;
-  const matches=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house&&(!q||String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q))).slice(0,100);
+  const matches=sortPeopleByName(people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house&&(!q||String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q)))).slice(0,100);
   if(!matches.length){result.innerHTML='Không tìm thấy đối tượng đang ở '+house+'. Kiểm tra lại tên hoặc mã.';return;}
   const ids=matches.map(p=>String(p.id));
   result.innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0"><b>Kết quả: ${matches.length} người</b><button type="button" class="btn gray" onclick="toggleHouseReviewBatchVisible(${n},${JSON.stringify(ids).replace(/</g,'&lt;').replace(/"/g,'&quot;')},true)">Chọn tất cả kết quả</button><button type="button" class="btn gray" onclick="toggleHouseReviewBatchVisible(${n},${JSON.stringify(ids).replace(/</g,'&lt;').replace(/"/g,'&quot;')},false)">Bỏ chọn kết quả</button></div>`+
