@@ -520,7 +520,7 @@ async function api(path, options={}){
   if(managerSession?.refresh_token)await refreshSession(false);
   // Giữ nguyên các header riêng của từng thao tác (đặc biệt Prefer: return=representation).
   // Trước đây headers() mặc định được ghép sau cùng nên đã ghi đè Prefer của POST/PATCH/DELETE.
-  const send=()=>fetch(SUPABASE_URL+'/rest/v1/'+path,Object.assign({},options,{
+  const send=()=>fetch(SUPABASE_URL+'/rest/v1/'+path,Object.assign({cache:'no-store'},options,{
     headers:headers(options.headers||{})
   }));
   let response=await send();
@@ -1824,26 +1824,46 @@ function openDxForm(id,dxId=null){
  toggleDxReturnField();openModal('dxFormModal');setTimeout(()=>$('dxReason').focus(),100);
 }
 async function saveDxForm(e){
- e.preventDefault();const id=$('dxPersonId').value,editId=$('dxEditId').value,p=people.find(x=>String(x.id)===String(id));if(!p)return;
- if(editId&&!canManagePerson(p)){alert('Bạn không có quyền chỉnh sửa lượt khám của đối tượng này.');return;}
+ e.preventDefault();
+ const id=$('dxPersonId').value,editId=$('dxEditId').value,p=people.find(x=>String(x.id)===String(id));
+ if(!p)return;
+ if(!canManagePerson(p)){alert('Bạn không có quyền thêm hoặc chỉnh sửa lượt khám của đối tượng này.');return;}
  const examDate=$('dxDate').value,enteredTime=$('dxTime').value,reason=$('dxReason').value.trim(),stayed=$('dxStayed').checked,returnAt=$('dxReturnDateTime').value;
  if(!examDate||!reason){alert('Vui lòng nhập ngày khám và lý do khám.');return;}
- const systemNow=new Date();const systemTime=`${String(systemNow.getHours()).padStart(2,'0')}:${String(systemNow.getMinutes()).padStart(2,'0')}`;
+ const systemNow=new Date(),systemTime=`${String(systemNow.getHours()).padStart(2,'0')}:${String(systemNow.getMinutes()).padStart(2,'0')}`;
  const dtLocal=`${examDate}T${enteredTime||systemTime}`;
  if(stayed&&!returnAt){alert('Vui lòng ghi ngày giờ trở về khu.');return;}
- const baseAction=$('dxAction').value;
- const dateTime=new Date(dtLocal).toLocaleString('vi-VN',{dateStyle:'short',timeStyle:'short'}),action=encodeDxAction(baseAction,stayed,returnAt);
+ const dateTime=new Date(dtLocal).toLocaleString('vi-VN',{dateStyle:'short',timeStyle:'short'});
+ const action=encodeDxAction($('dxAction').value,stayed,returnAt);
+ const submit=$('dxFormModal').querySelector('button[type="submit"]');
+ if(submit){submit.disabled=true;submit.textContent='Đang lưu...';}
  try{
-   let r;
-   if(editId){r=await api('kham_dot_xuat?id=eq.'+encodeURIComponent(editId),{method:'PATCH',headers:headers({'Prefer':'return=minimal'}),body:JSON.stringify({date_time:dateTime,reason,action})});}
-   else{r=await api('kham_dot_xuat',{method:'POST',headers:headers({'Prefer':'return=representation','Content-Type':'application/json'}),body:JSON.stringify({person_id:id,date_time:dateTime,reason,action})});}
-   if(!r.ok)throw new Error(await r.text());
-   // Cập nhật tại bộ nhớ sau khi máy chủ xác nhận, không tải lại toàn bộ lịch sử khám.
-   p.khamDotXuat=Array.isArray(p.khamDotXuat)?p.khamDotXuat:[];
-   if(editId){const item=p.khamDotXuat.find(x=>String(x.id)===String(editId));if(item){item.dateTime=dateTime;item.reason=reason;item.action=action;}}
-   else{const savedRows=await r.json();const saved=savedRows?.[0];p.khamDotXuat.unshift({id:saved?.id||('local-'+Date.now()),dateTime:saved?.date_time||dateTime,reason:saved?.reason||reason,action:saved?.action||action,created_at:saved?.created_at||new Date().toISOString()});}
-   closeModal('dxFormModal');render();viewPerson(id);alert(editId?'Đã cập nhật lượt khám.':'Đã lưu lượt khám. Vị trí Phòng Y tế/Khu được cập nhật theo lượt khám mới nhất.');
- }catch(err){showCloudError(err)}
+   const payload={person_id:id,date_time:dateTime,reason,action};
+   const endpoint=editId?'kham_dot_xuat?id=eq.'+encodeURIComponent(editId):'kham_dot_xuat';
+   const r=await api(endpoint,{method:editId?'PATCH':'POST',headers:headers({'Prefer':'return=representation','Content-Type':'application/json'}),body:JSON.stringify(editId?{date_time:dateTime,reason,action}:payload)});
+   const raw=await r.text();
+   if(!r.ok)throw new Error('Supabase từ chối lưu lượt khám (HTTP '+r.status+'): '+raw);
+   let savedRows=[];try{savedRows=raw?JSON.parse(raw):[]}catch(_){throw new Error('Máy chủ trả về dữ liệu không đọc được sau khi lưu lượt khám.');}
+   if(!Array.isArray(savedRows)||!savedRows.length)throw new Error('Máy chủ không xác nhận có dòng khám đột xuất được ghi/cập nhật. Kiểm tra quyền INSERT/UPDATE (RLS) trên bảng kham_dot_xuat.');
+   const saved=savedRows.find(x=>editId?String(x.id)===String(editId):String(x.person_id)===String(id));
+   if(!saved)throw new Error('Máy chủ không xác nhận đúng lượt khám của đối tượng này.');
+   // Đọc lại bản ghi vừa ghi để tránh báo thành công khi dữ liệu chưa thực sự tồn tại.
+   const check=await api('kham_dot_xuat?select=id,person_id,date_time,reason,action,created_at&id=eq.'+encodeURIComponent(saved.id)+'&limit=1');
+   const checkRaw=await check.text();
+   if(!check.ok)throw new Error('Đã gửi lượt khám nhưng không đọc xác minh được (HTTP '+check.status+'): '+checkRaw);
+   const checkRows=checkRaw?JSON.parse(checkRaw):[];
+   if(!Array.isArray(checkRows)||!checkRows[0]||String(checkRows[0].person_id)!==String(id)||String(checkRows[0].reason||'').trim()!==reason||String(checkRows[0].action||'')!==action)
+     throw new Error('Dữ liệu lượt khám đọc lại từ máy chủ không khớp nội dung vừa nhập. Chưa xác nhận lưu thành công.');
+   const dxMap=await loadDx();
+   people.forEach(person=>person.khamDotXuat=dxMap[String(person.id)]||[]);
+   const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
+   try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(cacheErr){console.warn('Không cập nhật cache lịch khám:',cacheErr);}
+   closeModal('dxFormModal');
+   render();
+   viewPerson(id);
+   alert(editId?'Đã xác minh cập nhật lượt khám trên máy chủ.':'Đã xác minh lưu lượt khám trên máy chủ.');
+ }catch(err){showCloudError(err);}
+ finally{if(submit){submit.disabled=false;submit.textContent=editId?'Lưu chỉnh sửa':'Lưu khám';}}
 }
 async function deleteDx(dxId,personId=''){
  if(!isAdmin()){alert('Chỉ ADMIN mới được xóa lượt khám đột xuất.');return;}
@@ -1851,10 +1871,25 @@ async function deleteDx(dxId,personId=''){
  if(!confirm('Bạn có chắc muốn xóa lượt khám đột xuất này? Thao tác này không thể hoàn tác.'))return;
  rememberPersonEditReturnState();const prior=personEditReturnState;
  try{
-   const r=await api('kham_dot_xuat?id=eq.'+encodeURIComponent(dxId),{method:'DELETE',headers:headers({'Prefer':'return=minimal'})});
-   if(!r.ok)throw new Error(await r.text());
-   const dxMap=await loadDx();people.forEach(person=>person.khamDotXuat=dxMap[String(person.id)]||[]);render();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
-   alert('Đã xóa lượt khám đột xuất.');
+   const r=await api('kham_dot_xuat?id=eq.'+encodeURIComponent(dxId),{method:'DELETE',headers:headers({'Prefer':'return=representation'})});
+   const raw=await r.text();
+   if(!r.ok)throw new Error('Supabase từ chối xóa lượt khám (HTTP '+r.status+'): '+raw);
+   let deleted=[];try{deleted=raw?JSON.parse(raw):[]}catch(_){throw new Error('Không đọc được xác nhận xóa từ máy chủ.');}
+   if(!Array.isArray(deleted)||!deleted.some(x=>String(x.id)===String(dxId)))
+     throw new Error('Máy chủ không xác nhận đã xóa lượt khám. Kiểm tra quyền DELETE (RLS) trên bảng kham_dot_xuat.');
+   const verify=await api('kham_dot_xuat?select=id&id=eq.'+encodeURIComponent(dxId)+'&limit=1');
+   const verifyRaw=await verify.text();
+   if(!verify.ok)throw new Error('Không xác minh được trạng thái sau xóa (HTTP '+verify.status+'): '+verifyRaw);
+   const remains=verifyRaw?JSON.parse(verifyRaw):[];
+   if(Array.isArray(remains)&&remains.some(x=>String(x.id)===String(dxId)))
+     throw new Error('Lượt khám vẫn còn trên máy chủ sau thao tác xóa; không thể báo xóa thành công.');
+   const dxMap=await loadDx();
+   people.forEach(person=>person.khamDotXuat=dxMap[String(person.id)]||[]);
+   const cacheKey='btxh_people_cache_v3_'+String(managerSession?.user?.id||'');
+   try{localStorage.setItem(cacheKey,JSON.stringify(people));}catch(cacheErr){console.warn('Không cập nhật cache lịch khám:',cacheErr);}
+   render();restorePersonEditReturnState();refreshDashboardAfterDelete(prior);
+   if(personId&&people.some(x=>String(x.id)===String(personId)))viewPerson(personId);
+   alert('Đã xác minh xóa lượt khám trên máy chủ.');
  }catch(err){personEditReturnState=null;showCloudError(err)}
 }
 async function addDx(id){openDxForm(id)}
