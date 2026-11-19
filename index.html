@@ -2203,10 +2203,16 @@ async function showHouseReviewPanel(n, query='', period='range', showList=false,
   host.innerHTML=`<div class="census-panel" style="margin-top:12px">
     <div class="census-head"><h3 style="margin:4px 0">📅 Lịch tái khám — ${house}</h3><button class="btn gray" type="button" onclick="$('houseReviewPanel').innerHTML=''">Đóng</button></div>${reviewLoadError?`<div class="notice" style="background:#fff7ed;color:#9a3412">Chưa tải được lịch mới nhất từ máy chủ: ${esc(reviewLoadError.message||reviewLoadError)}. Dữ liệu đang hiển thị có thể chưa mới nhất.</div>`:''}
     <div style="margin:10px 0;padding:12px;border:1px solid #86b7a0;background:#f3fbf6;border-radius:9px">
-      <b>＋ Nhập tên đối tượng để thêm lượt tái khám</b>
-      <input id="houseReviewQuickSearch" type="search" placeholder="Nhập tên hoặc mã đối tượng trong ${house}..." oninput="renderHouseReviewQuickSearch(${n},this.value)" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;margin:8px 0">
-      <div id="houseReviewQuickResults" class="notice">Nhập tên hoặc mã đối tượng, sau đó chọn người cần thêm lịch tái khám.</div>
-      <div id="houseReviewQuickForm"></div>
+      <b>＋ Chọn nhiều đối tượng rồi nhập ngày tái khám chung</b>
+      <input id="houseReviewQuickSearch" type="search" placeholder="Tìm theo tên hoặc mã đối tượng trong ${house}... (để trống xem danh sách)" oninput="renderHouseReviewQuickSearch(${n},this.value)" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #cbd5e1;border-radius:8px;margin:8px 0">
+      <div id="houseReviewQuickResults" class="notice" data-house-review-batch="${n}">Đang tải danh sách đối tượng…</div>
+      <div id="houseReviewBatchSummary" class="notice" style="margin-top:8px">Chưa chọn đối tượng nào.</div>
+      <form onsubmit="saveHouseReviewBatch(event,${n})" style="margin-top:10px;padding:12px;border:1px solid #93c5fd;border-radius:8px;background:#f8fbff">
+        <div class="field"><label>Ngày tái khám chung *</label><input name="reviewDate" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" oninput="formatDateInputSlash(this)" required></div>
+        <div class="field" style="margin-top:8px"><label>Tình trạng khám *</label><select name="reviewStatus" required><option value="Theo lịch">Khám theo lịch</option><option value="Đăng ký">Đăng ký khám</option></select></div>
+        <div class="field" style="margin-top:8px"><label>Ghi chú chung (không bắt buộc)</label><input name="reviewNote" placeholder="Nhập ghi chú nếu có"></div>
+        <div class="actions"><button class="btn green" type="submit">＋ Lưu lịch cho tất cả người đã chọn</button></div>
+      </form>
     </div>
     <div style="margin:10px 0;padding:14px;border:2px solid #2563eb;border-radius:10px;background:#f8fbff">
       <b style="display:block;font-size:16px;margin-bottom:4px">📊 THỐNG KÊ TÁI KHÁM RIÊNG — ${house}</b>
@@ -2223,20 +2229,83 @@ async function showHouseReviewPanel(n, query='', period='range', showList=false,
     </div>
     ${showList?`<div style="margin-top:12px;padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff"><h4 style="margin:0 0 10px">📋 Danh sách tái khám ${selectedDate?'ngày '+esc(formatDateVN(selectedDate)):'từ '+esc(formatDateVN(from))+' đến '+esc(formatDateVN(to))}</h4>${filteredList.length?filteredList.map(p=>p._reviewHistory.map(item=>`<div class="census-person"><b>${esc(p.ten||'')}</b> — Mã: ${esc(p.ma||'')}<br><span>Ngày tái khám: ${esc(formatDateVN(String(item.date||'').slice(0,10)))}</span>${item.note?`<br><span>Ghi chú: ${esc(item.note)}</span>`:''}${isAdmin()&&item.id!==undefined&&item.id!==null&&String(item.id).trim()!==''?`<br><button type="button" class="btn blue" data-person-id="${esc(String(p.id))}" data-review-id="${esc(String(item.id))}" onclick="window.editPersonReview(this.getAttribute('data-person-id'),this.getAttribute('data-review-id'),${n})">✎ Sửa lượt này</button> <button type="button" class="btn red" data-person-id="${esc(String(p.id))}" data-review-id="${esc(String(item.id))}" onclick="window.deletePersonReview(this.getAttribute('data-person-id'),this.getAttribute('data-review-id'),${n})">🗑 Xóa lượt này</button><div id="editReview_${String(item.id).replace(/[^a-zA-Z0-9_-]/g,'_')}"></div>`:''}<br><button type="button" class="btn blue" onclick="viewPerson('${String(p.id).replace(/'/g,"\\'")}')">Xem hồ sơ</button></div>`).join('')).join(''):`<div class="notice">Không có lịch tái khám trong khoảng thời gian đã chọn tại ${house}.</div>`}</div>`:''}
   </div>`;
+  renderHouseReviewQuickSearch(n,'');
+  updateHouseReviewBatchSummary(n);
 }
+let houseReviewBatchSelected = new Set();
 function renderHouseReviewQuickSearch(n, query){
   const result=$('houseReviewQuickResults'); if(!result)return;
   const q=String(query||'').trim().toLocaleLowerCase('vi');
-  if(!q){result.innerHTML='Nhập tên hoặc mã đối tượng, sau đó chọn người cần thêm lịch tái khám.';return;}
   const house='Nhà '+n;
-  const matches=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house&&(String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q))).slice(0,12);
-  result.innerHTML=matches.length?matches.map(p=>`<div class="census-person" style="margin:6px 0"><b>${esc(p.ten||'')}</b> — Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')} · Nhà: ${esc(p.nha||'')} · <br><button class="btn green" type="button" onclick="showHouseQuickReviewForm(${n},'${String(p.id).replace(/'/g,"\'")}')">Chọn và thêm lượt khám</button></div>`).join(''):'Không tìm thấy đối tượng đang ở '+house+'. Kiểm tra lại tên hoặc mã.';
+  const matches=people.filter(p=>isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house&&(!q||String(p.ten||'').toLocaleLowerCase('vi').includes(q)||String(p.ma||'').toLocaleLowerCase('vi').includes(q))).slice(0,100);
+  if(!matches.length){result.innerHTML='Không tìm thấy đối tượng đang ở '+house+'. Kiểm tra lại tên hoặc mã.';return;}
+  const ids=matches.map(p=>String(p.id));
+  result.innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0"><b>Kết quả: ${matches.length} người</b><button type="button" class="btn gray" onclick="toggleHouseReviewBatchVisible(${n},${JSON.stringify(ids).replace(/</g,'&lt;').replace(/"/g,'&quot;')},true)">Chọn tất cả kết quả</button><button type="button" class="btn gray" onclick="toggleHouseReviewBatchVisible(${n},${JSON.stringify(ids).replace(/</g,'&lt;').replace(/"/g,'&quot;')},false)">Bỏ chọn kết quả</button></div>`+
+  matches.map(p=>`<label class="census-person" style="display:flex;gap:10px;align-items:center;margin:6px 0;cursor:pointer"><input type="checkbox" style="width:20px;height:20px;flex:none" ${houseReviewBatchSelected.has(String(p.id))?'checked':''} onchange="toggleHouseReviewBatchOne('${String(p.id).replace(/'/g,"\\'")}',this.checked)"><span><b>${esc(p.ten||'')}</b> — Năm sinh: ${esc(p.namsinh||'Chưa cập nhật')} · Mã: ${esc(p.ma||'')}</span></label>`).join('');
+  updateHouseReviewBatchSummary(n);
 }
-function showHouseQuickReviewForm(n,id){
-  const p=people.find(x=>String(x.id)===String(id));const host=$('houseReviewQuickForm');if(!p||!host)return;
-  if(isManager()&&!canManagePerson(p)){alert('Bạn không có quyền nhập lịch tái khám ngoài phạm vi được giao.');return;}
-  host.innerHTML=`<div class="census-panel" style="margin-top:8px;padding:12px"><b>📅 Thêm lượt tái khám: ${esc(p.ten||'')}</b><div>Mã đối tượng: ${esc(p.ma||'')}</div><form onsubmit="savePersonReview(event,${n},'${String(p.id).replace(/'/g,"\'")}')" style="margin-top:8px"><div class="field"><label>Ngày khám *</label><input name="reviewDate" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" required></div><div class="field" style="margin-top:8px"><label>Tình trạng khám *</label><select name="reviewStatus" required style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px"><option value="Theo lịch">Khám theo lịch</option><option value="Đăng ký">Đăng ký khám</option></select></div><div class="field" style="margin-top:8px"><label>Ghi chú (không bắt buộc)</label><input name="reviewNote" placeholder="Nhập ghi chú nếu có"></div><div class="actions"><button class="btn gray" type="button" onclick="$('houseReviewQuickForm').innerHTML=''">Hủy</button><button class="btn green" type="submit">＋ Lưu lượt khám</button></div></form></div>`;
-  host.scrollIntoView({behavior:'smooth',block:'nearest'});
+function toggleHouseReviewBatchOne(id,checked){
+  if(checked)houseReviewBatchSelected.add(String(id));else houseReviewBatchSelected.delete(String(id));
+  const n=Number(String($('censusContent')?.querySelector('[data-house-review-batch]')?.getAttribute('data-house-review-batch')||''));
+  if(n)updateHouseReviewBatchSummary(n);
+}
+function toggleHouseReviewBatchVisible(n,ids,checked){
+  ids.forEach(id=>{if(checked)houseReviewBatchSelected.add(String(id));else houseReviewBatchSelected.delete(String(id));});
+  renderHouseReviewQuickSearch(n,$('houseReviewQuickSearch')?.value||'');
+}
+function updateHouseReviewBatchSummary(n){
+  const host=$('houseReviewBatchSummary');if(!host)return;
+  const house='Nhà '+n;
+  const selected=people.filter(p=>houseReviewBatchSelected.has(String(p.id))&&isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house);
+  host.innerHTML=`<b>Đã chọn ${selected.length} đối tượng</b>${selected.length?`<div style="max-height:140px;overflow:auto;font-size:13px;margin:5px 0">${selected.map(p=>esc(p.ten||'')).join('、')}</div>`:'<div style="font-size:13px;color:#64748b">Chọn các đối tượng trong danh sách phía trên.</div>'}`;
+}
+function showHouseQuickReviewForm(n,id){ // Giữ tương thích với các nút cũ nếu còn được gọi.
+  const p=people.find(x=>String(x.id)===String(id));if(!p)return;
+  toggleHouseReviewBatchOne(id,true);
+  updateHouseReviewBatchSummary(n);
+}
+async function saveHouseReviewBatch(e,n){
+  e.preventDefault();
+  if(isViewer()){alert('Tài khoản người xem chỉ được xem.');return;}
+  const form=e.target,house='Nhà '+n;
+  const date=normalizeReviewDateInput(form.elements.reviewDate?.value);
+  const status=form.elements.reviewStatus?.value;
+  const userNote=(form.elements.reviewNote?.value||'').trim();
+  if(!date){alert('Vui lòng nhập ngày khám hợp lệ theo dạng ngày/tháng/năm.');return;}
+  if(!status){alert('Vui lòng chọn tình trạng khám.');return;}
+  const selected=people.filter(p=>houseReviewBatchSelected.has(String(p.id))&&isCurrentlyManaged(p)&&currentLocation(p)==='Khu'&&String(p.nha||'').trim()===house&&(!isManager()||canManagePerson(p)));
+  if(!selected.length){alert('Vui lòng tích chọn ít nhất một đối tượng thuộc '+house+'.');return;}
+  if(selected.length!==houseReviewBatchSelected.size){
+    alert('Một số đối tượng đã thay đổi Nhà/vị trí hoặc ngoài phạm vi tài khoản nên sẽ không được thêm lịch. Vui lòng kiểm tra lại danh sách.');
+  }
+  const note='['+status+']'+(userNote?' '+userNote:'');
+  const btn=form.querySelector('button[type="submit"]');
+  if(btn){btn.disabled=true;btn.textContent='Đang lưu '+selected.length+' lịch…';}
+  try{
+    const payload=selected.map(p=>({person_id:String(p.id),review_date:date,note,created_by:managerSession?.user?.id||null}));
+    const r=await api('lich_tai_kham',{method:'POST',headers:headers({'Prefer':'return=representation','Content-Type':'application/json'}),body:JSON.stringify(payload)});
+    const raw=await r.text();
+    if(!r.ok)throw new Error(raw||('HTTP '+r.status));
+    let saved=[];try{saved=raw?JSON.parse(raw):[];}catch(_){throw new Error('Máy chủ trả về dữ liệu lưu không hợp lệ: '+raw);}
+    if(!Array.isArray(saved)||saved.length!==selected.length||saved.some(x=>x.id===undefined||x.id===null)){
+      throw new Error('Máy chủ chỉ xác nhận '+(Array.isArray(saved)?saved.length:0)+'/'+selected.length+' lịch. Không tự tạo bù để tránh ghi trùng; vui lòng tải lại danh sách trước khi thử lại.');
+    }
+    const byPerson=new Map(selected.map(p=>[String(p.id),p]));
+    saved.forEach(row=>{
+      const p=byPerson.get(String(row.person_id));if(!p)return;
+      p.lichTaiKham=Array.isArray(p.lichTaiKham)?p.lichTaiKham:[];
+      const item={id:row.id,date:String(row.review_date||date).slice(0,10),note:row.note||note,createdAt:row.created_at||new Date().toISOString(),_serverConfirmed:true};
+      if(!p.lichTaiKham.some(x=>String(x.id)===String(row.id)))p.lichTaiKham.unshift(item);
+      p.ngayTaiKham=p.lichTaiKham.map(x=>String(x.date||'').slice(0,10)).filter(Boolean).sort().at(-1)||date;
+    });
+    try{await loadReviews();}catch(err){console.warn('Đã lưu lịch hàng loạt nhưng chưa tải lại được:',err);}
+    try{localStorage.setItem('btxh_people_cache_v3_'+String(managerSession?.user?.id||''),JSON.stringify(people));}catch(err){console.warn('Không cập nhật được cache:',err);}
+    houseReviewBatchSelected.clear();
+    renderCensusHouse(n,$('censusContent').querySelector('.house-search')?.value||'');
+    await showHouseReviewPanel(n);
+    alert('Đã lưu thành công '+saved.length+' lịch tái khám cho '+house+' ngày '+formatDateVN(date)+'.');
+  }catch(err){showCloudError(err);}
+  finally{if(btn){btn.disabled=false;btn.textContent='＋ Lưu lịch cho tất cả người đã chọn';}}
 }
 
 function showPersonReviewForm(n,id){
